@@ -50,6 +50,10 @@
         "C_Cpp.enhancedColorization": "enabled",
         "C_Cpp.errorSquiggles": "disabled",
         "C_Cpp.formatting": "clangFormat",
+        "chat.agent.enabled": false,
+        "chat.agent.maxRequests": 0,
+        "chat.commandCenter.enabled": false,
+        "chat.notifyWindowOnConfirmation": false,
         "cs50.watchPorts": [
           5000,
           8080,
@@ -99,7 +103,6 @@
           "Codeium.codeium",
           "Codeium.codeium-enterprise-updater",
           "github.copilot",
-          "github.copilot-nightly",
           "ms-toolsai.vscode-jupyter-cell-tags",
           "tabnine.tabnine-vscode"
         ],
@@ -125,6 +128,20 @@
         "gitdoc.enabled": true,
         "gitdoc.pullOnOpen": false,
         "github.codespaces.devcontainerChangedNotificationStyle": "none",
+        "github.copilot.chat.agent.currentEditorContext.enabled": false,
+        "github.copilot.chat.copilotDebugCommand.enabled": false,
+        "github.copilot.chat.edits.newNotebook.enabled": false,
+        "github.copilot.chat.edits.suggestRelatedFilesForTests": false,
+        "github.copilot.chat.edits.suggestRelatedFilesFromGitHistory": false,
+        "github.copilot.chat.newWorkspaceCreation.enabled": false,
+        "github.copilot.chat.reviewSelection.enabled": false,
+        "github.copilot.chat.setupTests.enabled": false,
+        "github.copilot.chat.startDebugging.enabled": false,
+        "github.copilot.chat.summarizeAgentConversationHistory.enabled": false,
+        "github.copilot.editor.enableCodeActions": false,
+        "github.copilot.enable": {
+          "*": false
+        },
         "github.gitAuthentication": true,
         "html.autoCreateQuotes": false,
         "html.format.indentInnerHtml": true,
@@ -226,7 +243,7 @@
     8082,
     8787
   ],
-  "image": "ghcr.io/cs50/codespace:c1e460dc0c4a0a7575949afff3cd32261b8da576",
+  "image": "ghcr.io/cs50/codespace:d585c6e941d266ce9d4fd683fcce44a589f73fa2",
   "mounts": [
     {
       "source": "/var/run/docker.sock",
