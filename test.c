@@ -85,8 +85,18 @@ int main(void) {
     for(int i=0;i<10;i++) {
         printf("%d ",arr10[i]);
     }
-    printf("")
-    char ch[];
+    printf("");
+    char ch[10];
+
+    double foot;
+    double inch;
+    printf("foot:");
+    scanf("%lf",&foot);
+    printf(" ");
+    printf("inch:");
+    scanf("%lf",&inch);
+    printf("foot:%lf inch:%lf\n",foot,inch);
+    printf("foot+inch= %lf",foot+inch);
 
     
 
