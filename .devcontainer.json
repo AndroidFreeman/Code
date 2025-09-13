@@ -53,6 +53,7 @@
         "chat.agent.enabled": false,
         "chat.agent.maxRequests": 0,
         "chat.commandCenter.enabled": false,
+        "chat.disableAIFeatures": true,
         "chat.notifyWindowOnConfirmation": false,
         "cs50.watchPorts": [
           5000,
@@ -164,10 +165,29 @@
         "problems.visibility": false,
         "python.terminal.executeInFileDir": true,
         "remote.autoForwardPorts": true,
-        "remote.autoForwardPortsFallback": 0,
         "remote.autoForwardPortsSource": "process",
         "remote.otherPortsAttributes": {
-          "onAutoForward": "silent"
+          "onAutoForward": "ignore"
+        },
+        "remote.portsAttributes": {
+          "5000": {
+            "onAutoForward": "silent"
+          },
+          "5900": {
+            "onAutoForward": "silent"
+          },
+          "6081": {
+            "onAutoForward": "silent"
+          },
+          "8080": {
+            "onAutoForward": "silent"
+          },
+          "8082": {
+            "onAutoForward": "silent"
+          },
+          "8787": {
+            "onAutoForward": "silent"
+          }
         },
         "scm.countBadge": "off",
         "terminal.integrated.commandsToSkipShell": [
@@ -243,7 +263,7 @@
     8082,
     8787
   ],
-  "image": "ghcr.io/cs50/codespace:d585c6e941d266ce9d4fd683fcce44a589f73fa2",
+  "image": "ghcr.io/cs50/codespace:468a4d0e73c1b6996ddee319845360239dfedae9",
   "mounts": [
     {
       "source": "/var/run/docker.sock",
