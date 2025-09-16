@@ -47,4 +47,6 @@ int main(){
     // }
 
     int n1,n2,n3,n4;
+    int temp1,temp2,temp3,temp4;
+    
 }
