@@ -45,6 +45,9 @@ int main(){
     // }else{
     //     printf("%f",230+0.06*(income-7000));
     // }
-    
 
+    int mm,dd,yy;
+    int mm1,dd1,yy;
+    int mmm,ddm,yym;
+    
 }
