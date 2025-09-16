@@ -7,7 +7,7 @@ int main(){
     scanf("%d:%d",&hour,&minute);
     if(hour>12){
         hour=hour-12;
-        char time[]="PM";
+        time="PM";
         printf("Equicalent 12-hour time: %d:%d %s",hour,minute,time);
     }else{
         printf("Equicalent 12-hour time: %d:%d %s",hour,minute,time);
