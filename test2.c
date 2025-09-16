@@ -45,13 +45,6 @@ int main(){
     // }else{
     //     printf("%f",230+0.06*(income-7000));
     // }
+    
 
-    int n1,n2,n3,n4;
-    int max,min;
-    scanf("%d %d %d %d",&n1,&n2,&n3,&n4);
-    max=n1;
-    min=n1;
-    if("n2>max"){
-
-    }
 }
