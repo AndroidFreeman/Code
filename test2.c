@@ -47,11 +47,19 @@ int main(){
     // }
 
     int mm,dd,yy;
-    int mm1,dd1,yy;
-    int mmm,ddm,yym;
-    printf("Date");
+    int mm1,dd1,yy1;
+    printf("d1");
     scanf("%d/%d/%d",&mm,&dd,&yy);
-    printf("Date2")；
+    printf("d2")；
     scanf("%d/%d/%d",&mm1,&dd1,&yy1);
-    mm<mm1?
+    if(yy==yy1){
+        if(mm1==mm){
+            if(dd1==dd){
+                printf("Same");
+            }
+            dd>dd1?printf("d1win"):printf("d2win");
+        }
+        mm>mm1?printf("d1win"):printf("d2win);
+    }
+    yy>yy1?printf("d1win"):printf("d2win");
 }
