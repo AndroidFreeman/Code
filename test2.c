@@ -49,5 +49,9 @@ int main(){
     int mm,dd,yy;
     int mm1,dd1,yy;
     int mmm,ddm,yym;
-    
+    printf("Date");
+    scanf("%d/%d/%d",&mm,&dd,&yy);
+    printf("Date2")；
+    scanf("%d/%d/%d",&mm1,&dd1,&yy1);
+    mm<mm1?
 }
