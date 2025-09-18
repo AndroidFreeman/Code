@@ -46,20 +46,69 @@ int main(){
     //     printf("%f",230+0.06*(income-7000));
     // }
 
-    int mm,dd,yy;
-    int mm1,dd1,yy1;
-    printf("d1");
-    scanf("%d/%d/%d",&mm,&dd,&yy);
-    printf("d2")；
-    scanf("%d/%d/%d",&mm1,&dd1,&yy1);
-    if(yy==yy1){
-        if(mm1==mm){
-            if(dd1==dd){
-                printf("Same");
-            }
-            dd>dd1?printf("d1win"):printf("d2win");
-        }
-        mm>mm1?printf("d1win"):printf("d2win);
-    }
-    yy>yy1?printf("d1win"):printf("d2win");
+    // int mm,dd,yy;
+    // int mm1,dd1,yy1;
+    // printf("d1");
+    // scanf("%d/%d/%d",&mm,&dd,&yy);
+    // printf("d2")；
+    // scanf("%d/%d/%d",&mm1,&dd1,&yy1);
+    // if(yy==yy1){
+    //     if(mm1==mm){
+    //         if(dd1==dd){
+    //             printf("Same");
+    //         }
+    //         dd>dd1?printf("d1win"):printf("d2win");
+    //     }
+    //     mm>mm1?printf("d1win"):printf("d2win);
+    // }
+    // yy>yy1?printf("d1win"):printf("d2win");
+
+    // printf("Enter numerical grade:");
+    // int grade;
+    // scanf("%d",&grade);
+
+    // if (grade < 0 || grade > 100) {
+    //     printf("wrong\n");
+    //     return 1; // 提前退出
+    // }
+
+
+    // switch (grade / 10) {
+    //     case 10:
+    //     case 9:
+    //         printf("A\n");
+    //         break;
+    //     case 8:
+    //         printf("B\n");
+    //         break;
+    //     case 7:
+    //         printf("C\n");
+    //         break;
+    //     case 6:
+    //         printf("D\n");
+    //         break;
+    //     default:
+    //         printf("F\n");
+    //         break;
+    // }
+
+    // int n, sum=0;
+    // printf("Sum the integers/\n");
+    // printf("Enter integers:");
+    // scanf("%d",&n);
+    // while (n!=0){
+    //     sum = n+sum;
+    //     scanf("%d",&n);
+    // }
+    // printf("The sum is: %d\n",sum);
+    // return 0;
+
+    // int i=1;
+    // while(i<=128){
+    //     printf("%d ",i);
+    //     i*=2;
+    // }
+    // printf("\n");
+
+    int i
 }

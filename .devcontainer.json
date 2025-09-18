@@ -164,6 +164,7 @@
         "problems.decorations.enabled": false,
         "problems.visibility": false,
         "python.terminal.executeInFileDir": true,
+        "python.terminal.shellIntegration.enabled": false,
         "remote.autoForwardPorts": true,
         "remote.autoForwardPortsSource": "process",
         "remote.otherPortsAttributes": {
@@ -263,7 +264,7 @@
     8082,
     8787
   ],
-  "image": "ghcr.io/cs50/codespace:468a4d0e73c1b6996ddee319845360239dfedae9",
+  "image": "ghcr.io/cs50/codespace:439a032ea60eff3181eade0d9745a0222003a447",
   "mounts": [
     {
       "source": "/var/run/docker.sock",
