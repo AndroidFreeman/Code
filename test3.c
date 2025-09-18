@@ -48,5 +48,5 @@ int main(){
     printf("Circular cone v:%f s:%f",v1,s1);
     printf("Cylinder v:%f s:%f",v2,s2);
 
-    
+
 }
