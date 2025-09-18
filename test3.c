@@ -47,4 +47,6 @@ int main(){
     s2 = 2*PI*r2*r2+2*PI*r2*h2;
     printf("Circular cone v:%f s:%f",v1,s1);
     printf("Cylinder v:%f s:%f",v2,s2);
+
+    
 }
