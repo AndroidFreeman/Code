@@ -15,7 +15,7 @@ int main(){
 
     printf("Enter phone number:");
     char ch;
-    while(ch!='\n'){
+    while((ch=getchar())!='\n'){
         switch(ch){
             case 'A':case 'B':case 'C':
                 putchar('2');
