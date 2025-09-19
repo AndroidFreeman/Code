@@ -49,8 +49,8 @@ int main(){
 
     char ch;
     printf("Enter a word:");
-    
     while((ch=getchar())!='\n'){
+        ch=toupper(ch);
         switch(ch){
             case 'A':case '
         }
