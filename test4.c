@@ -79,15 +79,18 @@ int main(){
     // }
     // printf("Scrabble value: %d\n", score);
 
-    printf("Enter a sentence:");
-    // char sent[65];
-    // scanf("%s",sent);
-    char ch;
-    while((ch=getchar())!='\n'){
-        ch=toupper(ch);
-        if(ch=='A'||ch=='E'||){
+    // printf("Enter a sentence:");
+    // int i=0;
+    // char ch;
+    // while((ch=getchar())!='\n'){
+    //     ch=toupper(ch);
+    //     if(ch=='A'||ch=='E'||ch=='I'||ch=='O'||ch=='U'){
+    //         i=i+1;
+    //     }
+    // }
+    // printf("The answer is:%d\n",i);
 
-        }
-    }
+    
+
 }
 
