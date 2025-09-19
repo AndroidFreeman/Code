@@ -80,7 +80,14 @@ int main(){
     // printf("Scrabble value: %d\n", score);
 
     printf("Enter a sentence:");
-    char sent[65];
-    
+    // char sent[65];
+    // scanf("%s",sent);
+    char ch;
+    while((ch=getchar())!='\n'){
+        ch=toupper(ch);
+        if(ch=='A'||ch=='E'||){
+
+        }
+    }
 }
 
