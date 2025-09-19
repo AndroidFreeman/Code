@@ -17,7 +17,12 @@ int main(){
     char ch;
     while(ch!='\n'){
         switch(ch){
-            case
+            case 'A':
+            case 'B':
+            case 'C':
+                putchar('2');
+                break;
+            
         }
     }
 
