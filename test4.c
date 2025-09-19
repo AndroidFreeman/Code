@@ -90,6 +90,7 @@ int main(){
     // }
     // printf("The answer is:%d\n",i);
 
+    printf("Enter your first and last name:");
     
 
 }
