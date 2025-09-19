@@ -47,6 +47,6 @@ int main(){
     //     }
     // }
 
-
+    while
 }
 
