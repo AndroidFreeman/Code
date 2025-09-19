@@ -79,6 +79,8 @@ int main(){
     // }
     // printf("Scrabble value: %d\n", score);
 
+    printf("Enter a sentence:");
+    char sent[65];
     
 }
 
