@@ -48,6 +48,12 @@ int main(){
     // }
 
     char ch;
+    printf("Enter a word:");
     
+    while((ch=getchar())!='\n'){
+        switch(ch){
+            case 'A':case '
+        }
+    }
 }
 
