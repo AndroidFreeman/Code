@@ -14,8 +14,13 @@ int main(){
     // printf("%d %d %d",eight,sixteen1,sixteen2);
 
     printf("Enter phone number:");
-    int pNum;
-    
+    char ch;
+    while(ch!='\n'){
+        switch(ch){
+            case
+        }
+    }
+
 
 }
 
