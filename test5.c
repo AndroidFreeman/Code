@@ -129,13 +129,13 @@ int main(){
 //     }
 //     for (i = 0; i < 10; i++) {
 //         putchar('!');
-//     }
+//
 //     printf("\n");
 
-    int array[5][5];
-    for (int i=1;i=<5;i++){
-        printf("Enter row %d:",i);
-        scanf("%d %d %d %d %d",array[i][1],
-            array[i][2],array[i][3],array[i][4],array[i][1])
-    }
+    // int array[5][5];
+    // for (int i=1;i=<5;i++){
+    //     printf("Enter row %d:",i);
+    //     scanf("%d %d %d %d %d",array[i][1],
+    //         array[i][2],array[i][3],array[i][4],array[i][1])op
+    // }
 }
