@@ -3,6 +3,9 @@
 using namespace std;
 
 int main(){
+    bool flag=true;
+    bool flag=false;
+
     string str="Hello World!";
 
     int a = 10;
