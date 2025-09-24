@@ -55,6 +55,8 @@ int main(void)
     char *p_src=ch;
     char *p_dest=chT;
     while(*p_src!='\0'){
-        
+        *p_dest=toupper(p_src);
+        p_src++;
+        p_dest++;
     }
 }
