@@ -45,8 +45,9 @@ int main(void)
     char ch[N];
     char ch1[N];
     char c;
-    int
+    int*t1;
+    int*t2;
     while((c=getchar())!='\n'){
-
+        
     }
 }
