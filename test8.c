@@ -1,8 +1,8 @@
 #include<stdio.h>
 #define N 100
 void max_min(int a[], int n, int *max, int *min);
-int main(void)
 #include <ctype.h>
+int main(void)
 {
 //  int b[N], i, big, small;
 //  printf("Enter %d numbers: ", N);
