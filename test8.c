@@ -47,8 +47,8 @@ int main(void)
     char ch1[N];
     char ch1T[N];
     char c;
-    int*t1=ch;
-    int*t2=ch1;
+    char*t1=ch;
+    char*t2=ch1;
     while((c=getchar())!='\n'){
         ch[t1]=c;
         t1++;
