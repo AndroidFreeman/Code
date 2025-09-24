@@ -52,5 +52,9 @@ int main(void)
         t1++;
     }
     *t1='\0';
-    
+    char *p_src=ch;
+    char *p_dest=chT;
+    while(*p_src!='\0'){
+        
+    }
 }
