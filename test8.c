@@ -41,5 +41,12 @@ int main(void)
     // }
     // printf("%s\n",ch1);
 
-    
+    printf("Enter a message:");
+    char ch[N];
+    char ch1[N];
+    char c;
+    int
+    while((c=getchar())!='\n'){
+
+    }
 }
