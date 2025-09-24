@@ -44,14 +44,13 @@ int main(void)
     printf("Enter a message:");
     char ch[N];
     char chT[N];
-    char ch1[N];
     char ch1T[N];
     char c;
     char*t1=ch;
-    char*t2=ch1;
     while((c=getchar())!='\n'){
-        ch[t1]=c;
+        *t1=c;
         t1++;
     }
-    while()
+    *t1='\0';
+
 }
