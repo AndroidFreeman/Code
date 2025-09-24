@@ -51,4 +51,5 @@ int main(void)
         ch[t1]=c;
         t1++;
     }
+    while()
 }
