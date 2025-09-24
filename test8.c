@@ -59,4 +59,6 @@ int main(void)
         p_src++;
         p_dest++;
     }
+    *p_dest='\0';
+    p_
 }
