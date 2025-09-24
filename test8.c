@@ -43,7 +43,9 @@ int main(void)
 
     printf("Enter a message:");
     char ch[N];
+    char chT[N];
     char ch1[N];
+    char ch1T[N];
     char c;
     int*t1=ch;
     int*t2=ch1;
