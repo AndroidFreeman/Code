@@ -47,6 +47,7 @@ int main(void)
     char ch1T[N];
     char c;
     char*t1=ch;
+    char*t2=ch1;
     while((c=getchar())!='\n'){
         *t1=c;
         t1++;
@@ -60,5 +61,7 @@ int main(void)
         p_dest++;
     }
     *p_dest='\0';
-    p_
+    p_dest=p_dest-1;
+    p_src=chT;
+    while(p_dest)
 }
