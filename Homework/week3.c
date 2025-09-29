@@ -18,12 +18,15 @@ int main(){
 
     //Program2
     int number,sum,temp;
+    printf("Enter a number:");
+    scanf("%d",&number);
     for(int i=1;i<=number;i++){
         for(int j=number;j==1;j--){
             temp=temp*j;
         }
         sum=sum+1/temp;
     }
+    printf("The answer is:%d\n",sum);
 
     //Program7
     // int number=100;
