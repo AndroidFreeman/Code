@@ -49,7 +49,7 @@ int main(){
     // }
     // printf("The max is:%d\n",*p_max);
 
-    //Program5
+    // Program5
     // int number[4];
     // int temp;
     // for(int i=0;i<4;i++){
@@ -57,7 +57,7 @@ int main(){
     //     scanf("%d",&number[i]);
     // }
     // for(int i=0;i<4;i++){
-    //     for(int j=0;j<3-j;j++){
+    //     for(int j=0;j<3-i;j++){
     //         if(number[j]>number[j+1]){
     //             temp=number[j];
     //             number[j]=number[j+1];
@@ -94,6 +94,25 @@ int main(){
     //         break;
     // }
     // printf("The answer is:%lf",answer);
+
+    //Program6_New
+    // int a,b;
+    // char op;
+    // scanf("%d%c%d",&a,&op,&b);
+    // switch(op){
+    //     case '+':
+    //         printf("%d%c%d=%d\n",a,op,b,a+b);
+    //         break;
+    //     case '-':
+    //         printf("%d%c%d=%d\n",a,op,b,a-b);
+    //         break;
+    //     case '*':
+    //         printf("%d%c%d=%d\n",a,op,b,a*b);
+    //         break;
+    //     case '/':
+    //         printf("%d%c%d=%d\n",a,op,b,a/b);
+    //         break;
+    // }
 
     //Program7
     // int year, month, day;
