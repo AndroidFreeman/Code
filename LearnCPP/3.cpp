@@ -7,5 +7,4 @@ int main(){
         j=rand();
         cout<<j<<endl;
     }
-
 }
