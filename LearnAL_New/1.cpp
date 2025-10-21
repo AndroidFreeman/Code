@@ -30,7 +30,7 @@ int main(){
     iota(temp.begin(),temp.end(),1);
     a.insert(a.end(),temp.begin(),temp.end());
     printVector(a);
-    a.erase(11);
+    a.erase(a.begin());
     printVector(a);
     a.resize(11);
     printVector(a);
