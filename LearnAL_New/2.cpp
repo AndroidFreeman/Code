@@ -39,18 +39,26 @@ int main(){
         }
         cout<<endl;
     }
+
+
     //StackTest
+    //Step0
+    locale::global(locale(""));
+    //Step1
     cout<<"Enter a string:";
     string os;
     getline(cin,os);
+    //Step2
     stack<char> cs;
     for(char c:os){
         cs.push(c);
     }
+    //Step3
     string rs="";
     while(!cs.empty()){
         rs+=cs.top();
         cs.pop();
     }
+    //Step4
     cout<<rs<<endl;
 }
