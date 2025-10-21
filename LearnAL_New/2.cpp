@@ -61,4 +61,18 @@ int main(){
     }
     //Step4
     cout<<rs<<endl;
+
+    //Queue
+    queue<int> q;
+    q.push(1);
+    q.push(2);
+    q.push(3);
+    int q1=q.front();
+    cout<<q1<<endl;
+    q.pop();
+    q1=q.front();
+    cout<<q1<<endl;
+
+    //Priority Queue
+    int q2=q.top();
 }
