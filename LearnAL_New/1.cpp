@@ -30,5 +30,12 @@ int main(){
     iota(temp.begin(),temp.end(),1);
     a.insert(a.end(),temp.begin(),temp.end());
     printVector(a);
-    
+    a.erase(11);
+    printVector(a);
+    a.resize(11);
+    printVector(a);
+    reverse(a.begin(),a.end());
+    printVector(a);
+    sort(a.begin(),a.end());
+    printVector(a);
 }
