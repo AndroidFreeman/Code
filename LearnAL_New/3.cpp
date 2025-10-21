@@ -1,8 +1,11 @@
+//List
 #include<bits/stdc++.h>
 using namespace std;
 int main(){
-    //List
+    //HDU 1276
     int t,n;
+    cin>>t;
+    while(t--){
         cin>>n;
         int k=2;
         list<int> mylist;
@@ -26,6 +29,7 @@ int main(){
                 cout<<" ";
             }
             cout<<*it;
+        }
         cout<<endl;
     }
 }
