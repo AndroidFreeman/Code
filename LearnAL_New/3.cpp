@@ -12,7 +12,7 @@ int main(){
         for(int i=1;i<=n;i++){
             mylist.push_back(i);
         }
-        while(mylist.size()<3){
+        while(mylist.size()>3){
             int num=1;
             for(it=mylist.begin();it!=mylist.end;){
                 if(num++%k==0){
@@ -25,7 +25,7 @@ int main(){
         }
         for(it=mylist.begin();it!=mylist.end();it++){
             if(it!=mylist.begin()){
-                cout<<"";
+                cout<<" ";
             }
             cout<<*it;
         }
