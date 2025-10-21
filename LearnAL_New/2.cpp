@@ -18,8 +18,8 @@ int main(){
     //HDU 1062
     int n;
     char ch;
-    cin>>n;
-    getchar;
+    scanf("%d",&n);
+    getchar();
     while(n--){
         stack<char> s;
         while(true){
