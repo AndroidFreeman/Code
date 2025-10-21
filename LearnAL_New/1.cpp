@@ -38,5 +38,6 @@ int main(){
     sort(a.begin(),a.end());
     printVector(a);
     a.clean();
+
     
 }
