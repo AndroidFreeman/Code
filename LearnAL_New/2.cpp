@@ -16,7 +16,7 @@ int main(){
     bool s_isEmpty=s.empty();
     cout<<s_isEmpty<<endl;
     //HDU 1062
-    int n;
+    int n=1;
     char ch;
     scanf("%d",&n);
     getchar();
@@ -40,5 +40,17 @@ int main(){
         cout<<endl;
     }
     //StackTest
-    
+    cout<<"Enter a string:";
+    string os;
+    getline(cin,os);
+    stack<char> cs;
+    for(char c:os){
+        cs.push(c);
+    }
+    string rs="";
+    while(!cs.empty()){
+        rs+=cs.top();
+        cs.pop();
+    }
+    cout<<rs<<endl;
 }
