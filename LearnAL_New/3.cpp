@@ -3,7 +3,6 @@
 using namespace std;
 int main(){
     //HDU 1276
-
     //Step1
     int t,n;
     cin>>t;
