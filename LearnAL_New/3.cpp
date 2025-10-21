@@ -3,8 +3,6 @@ using namespace std;
 int main(){
     //List
     int t,n;
-    cin>>t;
-    while(t--){
         cin>>n;
         int k=2;
         list<int> mylist;
@@ -28,7 +26,6 @@ int main(){
                 cout<<" ";
             }
             cout<<*it;
-        }
         cout<<endl;
     }
 }
