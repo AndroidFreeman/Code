@@ -13,6 +13,7 @@ int main(){
         //抓人
         list<int> mylist;
         list<int>::iterator it;
+        //迭代器 
         for(int i=1;i<=n;i++){
             mylist.push_back(i);
         }
