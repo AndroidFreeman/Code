@@ -1,10 +1,10 @@
 #include <bits/stdc++.h>
 using namespace std;
-void printVector(const std::vector<int>& vec) {
+void printVector(const vector<int>& vec) {
     for (int element : vec) {
-        std::cout << element << " ";
+        cout << element << " ";
     }
-    std::cout << std::endl;
+    cout << std::endl;
 }
 int main(){
     cout << "Hello" << endl;
