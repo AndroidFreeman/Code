@@ -5,9 +5,12 @@ int main(){
     //HDU 1276
     int t,n;
     cin>>t;
+    //测试几轮
     while(t--){
         cin>>n;
+        //总人数
         int k=2;
+        //抓人
         list<int> mylist;
         list<int>::iterator it;
         for(int i=1;i<=n;i++){
