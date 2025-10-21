@@ -3,14 +3,17 @@ using namespace std;
 int main(){
     string os;
     getline(cin,os);
+
     stack<char> ss;
     for(char c:os){
-        ss.push(os);
+        ss.push(c);
     }
+
     string ts="";
     while(!ss.empty()){
-        ts=cs.top();
+        ts+=ss.top();
         ss.pop();
     }
+
     cout<<ts;
 }
