@@ -1,3 +1,4 @@
+//VectorLearn
 #include <bits/stdc++.h>
 using namespace std;
 void printVector(const vector<int>& vec) {
@@ -36,4 +37,6 @@ int main(){
     printVector(a);
     sort(a.begin(),a.end());
     printVector(a);
+    a.clean();
+    
 }
