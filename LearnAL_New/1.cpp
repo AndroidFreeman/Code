@@ -37,7 +37,14 @@ int main(){
     printVector(a);
     sort(a.begin(),a.end());
     printVector(a);
-    a.clean();
+    a.clear();
+    vector<int> table;
+    int n,m;
+    while(cin>>n>>m){
+        table.clear();
+        for(int i=0;i<2*n;i++){
+            table.
+        }
+    }
 
-    
 }
