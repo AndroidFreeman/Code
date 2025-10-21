@@ -43,7 +43,11 @@ int main(){
     while(cin>>n>>m){
         table.clear();
         for(int i=0;i<2*n;i++){
-            table.
+            table.push_back(i);
+        }
+        int pos=0;
+        for(int i=0;i<n;i++){
+            pos=(pos+m-1)%table.size();
         }
     }
 
