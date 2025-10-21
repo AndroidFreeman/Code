@@ -26,10 +26,10 @@ int main(){
     }
 
     string answer_string="";
-    for(!trans_string.empty()){
+    while(!trans_string.empty()){
         answer_string+=trans_string.top();
         trans_string.pop();
     }
 
-    cout<<trans_string<<endl;
+    cout<<answer_string<<endl;
 }
