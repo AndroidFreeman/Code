@@ -33,10 +33,14 @@ int main(){
                     //删除这个元素 迭代器指向下一个元素
                 }else{
                     it++;
+                    //如果这个人没完蛋 去检索下一个人
                 }
             }
             k==2?k=3:k=2;
+            //k是2还是3？
         }
+
+        //Step3
         for(it=mylist.begin();it!=mylist.end();it++){
             if(it!=mylist.begin()){
                 cout<<" ";
