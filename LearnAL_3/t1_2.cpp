@@ -18,12 +18,17 @@ int main(){
         }
         now->next=head;
 
-        
+        Node* prev=now;
         for(int i=0;i<n;i++){
             for(int j=0;j<m-1;j++){
-
+                prev=prev->next;
             }
+            Node* node_del=prev->next;
+            prev->next=node_del->next;
+            delete node_del;
         }
+
+        Node*
     }
 
 }
