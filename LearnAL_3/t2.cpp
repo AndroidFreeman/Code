@@ -19,7 +19,15 @@ int main(){
                 cout<<s.top();
                 s.pop();
             }
+            cout<<' ';
+        }else{
+            s.push(ch);
         }
     }
+    while(!s.empty()){
+        result+=s.top();
+        s.pop();
+    }
+    cout<<result<<endl;
 }
 
