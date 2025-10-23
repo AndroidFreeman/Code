@@ -18,5 +18,5 @@ int main(){
     }
     now->next=head;
 
-    
+    if()
 }
