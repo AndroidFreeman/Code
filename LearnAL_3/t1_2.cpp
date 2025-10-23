@@ -32,8 +32,40 @@ int main(){
         vector<bool> is_sur(n,false);
         now=head;
         for(int i=0;i<n;i++){
-        
+
         }
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    for(char ch:s_in){
+        if(ch==' '){
+            while(!s.empty()){
+                cout<<s.top();
+                s.pop();
+            }
+            cout<<' ';
+        }else{
+            s.push(ch);
+        }
+    }
+    while(!s.empty()){
+        cout<<s.top();
+        s.pop();
+    }
+    cout<<endl;
