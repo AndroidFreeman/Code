@@ -1,6 +1,8 @@
 #include<bits/stdc++.h>
 using namespace std;
 int main(){
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
     stack<char> s;
     string s_in;
     getline(cin,s_in);
