@@ -15,7 +15,10 @@ int main(){
     // }
     for(char ch:s_in){
         if(ch==' '){
-            while(!s.empty())
+            while(!s.empty()){
+                cout<<s.top();
+                s.pop();
+            }
         }
     }
 }
