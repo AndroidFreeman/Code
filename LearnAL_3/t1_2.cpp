@@ -28,7 +28,12 @@ int main(){
             delete node_del;
         }
 
-        Node*
+        head=prev->next;
+        vector<bool> is_sur(n,false);
+        now=head;
+        for(int i=0;i<n;i++){
+        
+        }
     }
 
 }
