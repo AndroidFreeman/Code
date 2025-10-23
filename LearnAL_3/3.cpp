@@ -24,7 +24,7 @@ int main(){
         while(mylist.size()>3){
         //条件罢了
             int num=1;
-            for(it=mylist.begin();it!=mylist.end;){
+            for(it=mylist.begin();it!=mylist.end();){
             //淘汰一轮的过程
                 if(num++%k==0){
                 //如果num是k的倍数 这个数就完蛋了
