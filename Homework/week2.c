@@ -1,14 +1,14 @@
 #include<stdio.h>
 int main(){
-    //Program1
-    // int number=0;
-    // printf("Enter the year:");
-    // scanf("%d", &number);
-    // if((number%4==0&&number%100!=0)||(number%400==0)){
-    //     printf("Leap Year\n");
-    // }else{
-    //     printf("Not Leap Year\n");
-    // }
+    Program1
+    int number=0;
+    printf("Enter the year:");
+    scanf("%d", &number);
+    if((number%4==0&&number%100!=0)||(number%400==0)){
+        printf("Leap Year\n");
+    }else{
+        printf("Not Leap Year\n");
+    }
 
     //Program2
     // printf("Enter a character:");
