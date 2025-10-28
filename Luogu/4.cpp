@@ -15,7 +15,15 @@ int main(){
 
     //plus
     vector<int> sum;
-    
+    int t=0;
+    for(int i=0;i<left.size()||i<right.size();i++){
+        if(i<left.size()){
+            t+=left[i];
+        }
+        if(i<right.size()){
+            t+=right[i];
+        }
+    }
 
 
 
