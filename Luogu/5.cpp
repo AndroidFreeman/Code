@@ -17,6 +17,9 @@ int main(){
     }
 
     //process
-    vector<int> process(A.size()+B.size(),0);
-    for(int i=0;)
+    vector<int> C(A.size()+B.size(),0);
+    for(int i=0;i<B.size();i++){
+        for(int j=0;j<A.size();j++){
+            C[i+j]+=A[j]*B[i];
+        }
 }
