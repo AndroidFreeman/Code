@@ -16,7 +16,7 @@ int main(){
     //plus
     vector<int> sum;
     int carry=0;
-    for(int i=0;i<left.size()||i<right.size();i--){
+    for(int i=0;i<left.size()||i<right.size();i++){
         if(i<left.size()){
             carry+=left[i];
         }
