@@ -8,8 +8,15 @@ int main(){
         cout<<'0'<<endl;
         return 0;
     }
+    vector<int> A,B;
+    for(int i=sa.length()-1;i>=0;i--){
+        A.push_back(sa[i]-'0');
+    }
+    for(int i=sb.length()-1;i>=0;i--){
+        B.push_back(sb[i]-'0');
+    }
 
     //process
-    vector<int> A,B;
-    for(int i=sa.length())
+    vector<int> process(A.size()+B.size(),0);
+    for(int i=0;)
 }
