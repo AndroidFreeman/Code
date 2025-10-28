@@ -4,8 +4,8 @@ int main(){
     //input
     string sa,sb;
     cin>>sa>>sb;
-    if(sa=='0'||sb=='0'){
-        cout<<'0'<<endl;
+    if(sa=="0"||sb=="0"){
+        cout<<"0"<<endl;
         return 0;
     }
     vector<int> A,B;
@@ -40,5 +40,5 @@ int main(){
     for(int i=k;i>=0;i--){
         cout<<C[i];
     }
-    cout<endl;
+    cout<<endl;
 }
