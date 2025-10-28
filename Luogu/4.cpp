@@ -15,15 +15,19 @@ int main(){
 
     //plus
     vector<int> sum;
-    int t=0;
+    int carry=0;
     for(int i=0;i<left.size()||i<right.size();i++){
         if(i<left.size()){
-            t+=left[i];
+            carry+=left[i];
         }
         if(i<right.size()){
-            t+=right[i];
+            carry+=right[i];
         }
+        sum.push_back(carry%10);
+        carry=carry/10;
     }
+
+
 
 
 
