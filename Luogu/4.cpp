@@ -2,6 +2,7 @@
 #include<bits/stdc++.h>
 using namespace std;
 int main(){
+    //input
     vector<int> left,right;
     string tleft,tright;
     cin>>tleft>>tright;
@@ -11,4 +12,10 @@ int main(){
     for(int i=tright.length()-1;i>=0;i++){
         right.push_back(tright[i]-'0');
     }
+
+    //
+
+
+
+
 }
