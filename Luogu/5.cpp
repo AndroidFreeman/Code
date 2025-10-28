@@ -16,13 +16,15 @@ int main(){
         B.push_back(sb[i]-'0');
     }
 
-    //process
+    //process1
     vector<int> C(A.size()+B.size(),0);
     for(int i=0;i<B.size();i++){
         for(int j=0;j<A.size();j++){
             C[i+j]+=A[j]*B[i];
         }
     }
+
+    //process2
     int t=0;
     for(int i=0;i<C.size();i++){
         t+=C[i];
