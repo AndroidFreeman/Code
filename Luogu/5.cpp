@@ -22,4 +22,21 @@ int main(){
         for(int j=0;j<A.size();j++){
             C[i+j]+=A[j]*B[i];
         }
+    }
+    int t=0;
+    for(int i=0;i<C.size();i++){
+        t+=C[i];
+        C[i]=t%10;
+        t=t/10;
+    }
+    int k=C.size()-1;
+    while(k>0&&C[k]==0){
+        k--;
+    }
+
+    //output
+    for(int i=k;i>=0;i--){
+        cout<<C[i];
+    }
+    cout<endl;
 }
