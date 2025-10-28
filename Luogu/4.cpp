@@ -13,8 +13,9 @@ int main(){
         right.push_back(tright[i]-'0');
     }
 
-    //
-
+    //plus
+    vector<int> sum;
+    
 
 
 
