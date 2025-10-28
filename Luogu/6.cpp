@@ -4,5 +4,6 @@ using namespace std;
 int main(){
     //input
     int input,output;
-    for(int i=0;i<)
+    cin>>input;
+    for(int i=0;i<i)
 }
