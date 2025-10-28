@@ -8,4 +8,8 @@ int main(){
         cout<<'0'<<endl;
         return 0;
     }
+
+    //process
+    vector<int> A,B;
+    for(int i=sa.length())
 }
