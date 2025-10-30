@@ -3,9 +3,15 @@
 using namespace std;
 int main(){
     //input
-    int input,output;
+    int input,output,temp;
     cin>>input;
+    //process
     for(int i=input;i<=0;i--){
-        for(int j=0;j<)
+        for(int j=input;j<=0;j--){
+            temp+=i*j;
+        }
+        output+=temp;
     }
+    //output
+    cout<<output;
 }
