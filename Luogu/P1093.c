@@ -37,12 +37,16 @@ int main(){
                 }
             }
             if(need_swap){
-                int temp=score_total[j];
+                int temp;
+
+                temp=score_total[j];
                 score_total[j]=score_total[j+1];
                 score_total[j+1]=temp;
+
                 temp=chi[j];
                 chi[j]=chi[j+1];
                 chi[j+1]=temp;
+
                 temp=index[j];
                 index[j]=index[j+1];
                 index[j+1]=temp;
