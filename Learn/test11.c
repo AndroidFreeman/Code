@@ -37,16 +37,9 @@ int main() {
     int temp = tmpp[0];
     tmpp[0] = *p_max;
     *p_max = temp;
-
-    // 3.2 交换最小值到 tmpp[Q-1]
-
-    // 检查: 如果最小值原本在 tmpp[0] (现在被最大值占了)
-    // 那么 p_min 此时指向的位置 (tmpp[0]) 存的是最大值，
-    // 但它真正的地址是 p_max (因为被换过去了)。
     if (p_min == &tmpp[0]) {
         p_min = p_max;
     }
-
     int* p_last = &tmpp[Q - 1];
     temp = *p_last;
     *p_last = *p_min;

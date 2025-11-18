@@ -65,7 +65,20 @@ int main(){
         }
     }
 
-
+    int temp = tmpp[0];
+    tmpp[0] = *p_max;
+    *p_max = temp;
+    if (p_min == &tmpp[0]) {
+        p_min = p_max;
+    }
+    int* p_last = &tmpp[Q - 1];
+    temp = *p_last;
+    *p_last = *p_min;
+    *p_min = temp;
     
+    for (int i = 0; i < Q; i++) {
+        printf("%d ", tmpp[i]);
+    }
+
     //Program5
 }
