@@ -23,7 +23,7 @@ int main(){
     //Program2
     const int N=5;
     int tmp[N];
-    int total;
+    int total=0;
     for(int i=0;i<N;i++){
         scanf("%d",&tmp[i]);
         int *p=tmp[N];
