@@ -52,6 +52,7 @@ int main(){
     for (p = tmpp; p < tmpp + Q; p++) {
         scanf("%d", p);
     }
+
     int* p_max = tmpp;
     for (p = tmpp + 1; p < tmpp + Q; p++) {
         if (*p > *p_max) {
@@ -61,7 +62,6 @@ int main(){
     temp = *tmpp;
     *tmpp = *p_max;
     *p_max = temp;
-
     int* p_min = tmpp + 1;
     for (p = tmpp + 2; p < tmpp + Q; p++) {
         if (*p < *p_min) {
