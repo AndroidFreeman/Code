@@ -34,26 +34,25 @@ void Fun5_1(int* arr,int n){
 
 void Fun5_2(int* arr,int n){
     int temp;
-    int* pMin=arr;
-    int* pMax=arr;
-    for(int i=0;i<n;i++){
-        if(*(arr+i)<*pMin){
-            pMin=arr+i;
-        }
-        if(*(arr+i)>*pMax){
-            pMax=arr+i;
+    int *pMin = arr;
+    for (int i = 1; i < n; i++) {
+        if (*(arr + i) < *pMin) {
+            pMin = arr + i;
         }
     }
-    temp=*arr;
-    *arr=*pMin;
-    *pMin=temp;
-    if(pMax==arr){
-        pMax=pMin;
+    temp = *arr;
+    *arr = *pMin;
+    *pMin = temp;
+    int *pMax = arr;
+    for (int i = 1; i < n; i++) {
+        if (*(arr + i) > *pMax) {
+            pMax = arr + i;
+        }
     }
-    int* pLast=arr+n-1;
-    temp=*pLast;
-    *pLast=*pMax;
-    *pMax=temp;
+    int *pLast = arr + n - 1;
+    temp = *pLast;
+    *pLast = *pMax;
+    *pMax = temp;
 }
 
 void Fun5_3(int *arr,int n){

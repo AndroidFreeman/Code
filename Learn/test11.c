@@ -1,37 +1,56 @@
 #include <stdio.h>
-int main() {
-    int Q;
-    scanf("%d", &Q);
-    int tmpp[Q];
-    int* p;
-    int temp;
-    for (p = tmpp; p < tmpp + Q; p++) {
-        scanf("%d", p);
-    }
-    int* p_max = tmpp;
-    for (p = tmpp + 1; p < tmpp + Q; p++) {
-        if (*p > *p_max) {
-            p_max = p;
-        }
-    }
-    temp = *tmpp;
-    *tmpp = *p_max;
-    *p_max = temp;
 
-    int* p_min = tmpp + 1;
-    for (p = tmpp + 2; p < tmpp + Q; p++) {
-        if (*p < *p_min) {
-            p_min = p;
-        }
+const int N = 10;
+
+// (函数1: input_array 和 函数3: output_array 保持不变)
+void input_array(int *arr, int n) {
+    printf("请输入 %d 个整数: \n", n);
+    for (int i = 0; i < n; i++) {
+        scanf("%d", arr + i);
     }
-    int* p_last = tmpp + Q - 1;
+}
 
-    temp = *p_last;
-    *p_last = *p_min;
-    *p_min = temp;
-
-    for (p = tmpp; p < tmpp + Q; p++) {
-        printf("%d ", *p);
+void output_array(int *arr, int n) {
+    printf("处理后的数组为: \n");
+    for (int i = 0; i < n; i++) {
+        printf("%d ", *(arr + i));
     }
     printf("\n");
+}
+
+
+// --- 2. 函数(2): 对换 (简单逻辑版) ---
+void swap_array(int *arr, int n) {
+    int temp;
+    int *pMin = arr;
+    for (int i = 1; i < n; i++) {
+        if (*(arr + i) < *pMin) {
+            pMin = arr + i;
+        }
+    }
+    temp = *arr;
+    *arr = *pMin;
+    *pMin = temp;
+    int *pMax = arr;
+    for (int i = 1; i < n; i++) {
+        if (*(arr + i) > *pMax) {
+            pMax = arr + i;
+        }
+    }
+    int *pLast = arr + n - 1;
+    temp = *pLast;
+    *pLast = *pMax;
+    *pMax = temp;
+}
+
+
+// --- 主函数 ---
+int main() {
+    int arr[N];
+
+    input_array(arr, N);
+    swap_array(arr, N);
+    output_array(arr, N);
+
+    return 0;
 }
