@@ -33,10 +33,10 @@ int main(){
     // printf("%d",ave);
 
     //Program3
-    const int N=5;
-    int tmp[N];
+    const int O=5;
+    int tmp[O];
     int total=1;
-    for(int i=0;i<N;i++){
+    for(int i=0;i<O;i++){
         scanf("%d",&tmp[i]);
         int *p=&tmp[i];
         total=total*(*p);
@@ -44,5 +44,11 @@ int main(){
     printf("%d",total);
 
     //Program4
+    int Q;
+    scanf("%d",&Q);
+    int tmpp[Q];
+    for(int i=0;i<Q;i++){
+        scanf("%d",&tmpp[i]);
+    }
     
 }
