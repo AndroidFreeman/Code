@@ -5,15 +5,9 @@ int main() {
     int *p;
     int temp;
     // 1. 使用指针循环输入
-    printf("请输入 %d 个整数: \n", N);
     for (p = arr; p < arr + N; p++) {
         scanf("%d", p); // p 本身就是地址
     }
-    printf("--- 原始数组 ---\n");
-    for (p = arr; p < arr + N; p++) {
-        printf("%d ", *p);
-    }
-    printf("\n");
     // 2. 步骤一: 找到最大值, 并将其与第一个元素 (arr[0]) 交换
     // 假设第一个元素 (arr[0]) 就是最大值
     int *pMax = arr;
