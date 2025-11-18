@@ -79,6 +79,7 @@ int main(){
     // printf("\n");
 
     //Program5
-    int
+    const int T_N=10;
+    
 
 }
