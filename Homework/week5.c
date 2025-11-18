@@ -26,7 +26,7 @@ int main(){
     int total=0;
     for(int i=0;i<N;i++){
         scanf("%d",&tmp[i]);
-        int *p=tmp[N];
+        int *p=&tmp[i];
         total+=*p;
     }
     int ave=total/N;
