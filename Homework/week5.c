@@ -3,7 +3,6 @@ int main(){
     //Program1
     const int M=3;
     int temp[M];
-    int* p;
     for(int i=0;i<2;i++){
         scanf("%d",&temp[i]);
     }
