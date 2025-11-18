@@ -47,14 +47,11 @@ int main(){
     int Q;
     scanf("%d",&Q);
     int tmpp[Q];
-
     for(int i=0;i<Q;i++){
         scanf("%d",&tmpp[i]);
     }
-
     int* p_max = &tmpp[0];
     int* p_min = &tmpp[0];
-
     int* p;
     for (p = &tmpp[1]; p < &tmpp[Q]; p++) {
         if (*p > *p_max) {
@@ -75,7 +72,7 @@ int main(){
     temp = *p_last;
     *p_last = *p_min;
     *p_min = temp;
-    
+
     for (int i = 0; i < Q; i++) {
         printf("%d ", tmpp[i]);
     }
