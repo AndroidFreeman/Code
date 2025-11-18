@@ -26,16 +26,33 @@ int Fun4(int a,int b){
 }
 
 //Program5
-int Fun5_1(void){
-    int number[10];
-    for(int i=0;i<10;i++){
-        scanf("%d",&number[i]);
+void Fun5_1(int* arr,int n){
+    for(int i=0;i<n;i++){
+        scanf("%d",arr+i);
     }
 }
-int Fun5_2(int number[]){
-    for(int i=0;i<10;i++){
-
+void Fun5_2(int* arr,int n){
+    int temp;
+    int* pMin=arr;
+    int* pMax=arr;
+    for(int i=0;i<n;i++){
+        if(*(arr+i)<*pMin){
+            pMin=arr+i;
+        }
+        if(*(arr+i)>*pMax){
+            pMax=arr+i;
+        }
     }
+    temp=*arr;
+    *arr=*pMin;
+    *pMin=temp;
+    if(pMax==arr){
+        pMax=pMin;
+    }
+    int* pLast=arr+n-1;
+    temp=*pLast;
+    *pLast=*pMax;
+    *pMax=temp;
 }
 
 int main(){
