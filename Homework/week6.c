@@ -31,6 +31,7 @@ void Fun5_1(int* arr,int n){
         scanf("%d",arr+i);
     }
 }
+
 void Fun5_2(int* arr,int n){
     int temp;
     int* pMin=arr;
@@ -55,6 +56,13 @@ void Fun5_2(int* arr,int n){
     *pMax=temp;
 }
 
+void Fun5_3(int *arr,int n){
+    for(int i=0;i<n;i++){
+        printf("%d",*(arr+1));
+    }
+    printf("\n");
+}
+
 int main(){
     //Program2
     int i,sum=0;
@@ -74,4 +82,11 @@ int main(){
     scanf("%d",&j);
     double result=fun(j);
     printf("%d\n",result);
+
+    //Program5
+    const int N=10;
+    int arr[N];
+    Fun5_1(arr,N);
+    Fun5_2(arr,N);
+    Fun5_3(arr,N);
 }
