@@ -21,14 +21,28 @@ int main(){
     // printf("\n");
 
     //Program2
+    // const int N=5;
+    // int tmp[N];
+    // int total=0;
+    // for(int i=0;i<N;i++){
+    //     scanf("%d",&tmp[i]);
+    //     int *p=&tmp[i];
+    //     total+=*p;
+    // }
+    // int ave=total/N;
+    // printf("%d",ave);
+
+    //Program3
     const int N=5;
     int tmp[N];
-    int total=0;
+    int total=1;
     for(int i=0;i<N;i++){
         scanf("%d",&tmp[i]);
         int *p=&tmp[i];
-        total+=*p;
+        total=total*(*p);
     }
-    int ave=total/N;
-    printf("%d",ave);
+    printf("%d",total);
+
+    //Program4
+    
 }
