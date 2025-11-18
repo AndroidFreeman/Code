@@ -10,8 +10,13 @@ int main(){
     for(int i=0;i<3;i++){
         if(temp[i]>temp[i+1]){
             *p=temp[i];
-            temp[i+1]=temp[i];
+            temp[i]=temp[i+1];
             temp[i+1]=*p
+        }else{
+            continue;
         }
+    }
+    for(int i=0;i<3;i++){
+        printf("%d",temp[i]);
     }
 }
