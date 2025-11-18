@@ -58,13 +58,21 @@ int main(){
     for(int i=0;i<Q-1;i++){
         int* p_t=tmpp[i];
         if(*p_max<*p_t){
-            int* p=*p_t;
+            *p_max=*p_t;
         }
     }
     for(int i=1;i<Q-1;i++){
         int* p_t=tmpp[i];
-        if(*p_min<*p_t){
-            int* p=*p_t;
+        if(*p_min>*p_t){
+            *p_min=*p_t;
         }
     }
+    int* p=tmpp[0];
+    tmpp[0]=*p_max;
+    *p_max=*p;
+    p=tmpp[Q-1];
+    tmpp[Q-1]=*p_min;
+    *p_min=*p;
+
+    //Program5
 }
