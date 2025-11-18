@@ -25,6 +25,20 @@ int Fun4(int a,int b){
     return res;
 }
 
+//Program5
+int Fun5_1(void){
+    int number[10];
+    for(int i=0;i<10;i++){
+        scanf("%d",&number[i]);
+    }
+
+}
+int Fun5_2(int number[]){
+    for(int i=0;i<10;i++){
+        
+    }
+}
+
 int main(){
     //Program2
     int i,sum=0;
