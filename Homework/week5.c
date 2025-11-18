@@ -63,6 +63,7 @@ int main(){
     // *tmpp = *p_max;
     // *p_max = temp;
     // int* p_min = tmpp + 1;
+
     // for (p = tmpp + 2; p < tmpp + Q; p++) {
     //     if (*p < *p_min) {
     //         p_min = p;
@@ -80,6 +81,6 @@ int main(){
 
     //Program5
     const int T_N=10;
-    
+
 
 }
