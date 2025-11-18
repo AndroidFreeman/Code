@@ -45,31 +45,38 @@ int main(){
 
     //Program4
     int Q;
-    scanf("%d",&Q);
+    scanf("%d", &Q);
     int tmpp[Q];
-    for(int i=0;i<Q;i++){
-        scanf("%d",&tmpp[i]);
-    }
-    int* p_max = &tmpp[0];
-    int* p_min = &tmpp[0];
     int* p;
-    for (p = &tmpp[1]; p < &tmpp[Q]; p++) {
+    int temp;
+    for (p = tmpp; p < tmpp + Q; p++) {
+        scanf("%d", p);
+    }
+    int* p_max = tmpp;
+    for (p = tmpp + 1; p < tmpp + Q; p++) {
         if (*p > *p_max) {
             p_max = p;
         }
+    }
+    temp = *tmpp;
+    *tmpp = *p_max;
+    *p_max = temp;
+
+    int* p_min = tmpp + 1;
+    for (p = tmpp + 2; p < tmpp + Q; p++) {
         if (*p < *p_min) {
             p_min = p;
         }
     }
-
-    int temp = tmpp[0];
+    int* p_last = tmpp + Q - 1;
     temp = *p_last;
     *p_last = *p_min;
     *p_min = temp;
 
-    for (int i = 0; i < Q; i++) {
-        printf("%d ", tmpp[i]);
+    for (p = tmpp; p < tmpp + Q; p++) {
+        printf("%d ", *p);
     }
+    printf("\n");
 
     //Program5
 }
