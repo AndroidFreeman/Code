@@ -45,10 +45,21 @@ int main(){
 
     //Program4
     int Q;
+    int max,min;
     scanf("%d",&Q);
     int tmpp[Q];
     for(int i=0;i<Q;i++){
         scanf("%d",&tmpp[i]);
     }
-    
+    max=tmpp[0];
+    int* p_max=&max;
+    min=tmpp[Q-1];
+    int* p_min=&min;
+    for(int i=0;i<Q-1;i++){
+    int* p_t=tmpp[i];
+        if(*p_max<*p_t){
+            int* p=*p_t;
+            
+        }
+    }
 }
