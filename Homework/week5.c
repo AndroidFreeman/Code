@@ -4,10 +4,10 @@ int main(){
     const int M=3;
     int temp[M];
     int* p;
-    for(int i=0;i<3;i++){
-        scanf("%d",temp[i]);
+    for(int i=0;i<2;i++){
+        scanf("%d",&temp[i]);
     }
-    for(int i=0;i<3;i++){
+    for(int i=0;i<2;i++){
         if(temp[i]>temp[i+1]){
             *p=temp[i];
             temp[i]=temp[i+1];
