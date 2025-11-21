@@ -7,7 +7,8 @@ int fun(int n){
 int main(){
     int n;
     // scanf("%d",&n);
-    int (*p)[10];
+    // int (*p)[10];
+    int * p[10];
     for(int i=1;i<9;i++){
         printf("%d\n",fun(i));
     }
