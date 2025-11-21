@@ -1,6 +1,6 @@
 #include<stdio.h>
 int fun(int n){
-    int a=1;
+    static int a=1;
     a++;
     return a+n;
 }
