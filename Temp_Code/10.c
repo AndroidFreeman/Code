@@ -6,8 +6,8 @@ int fun(int n){
 }
 int main(){
     int n;
-    scanf("%d",&n);
-    for(int i=1;i<3;i++){
+    // scanf("%d",&n);
+    for(int i=1;i<9;i++){
         printf("%d\n",fun(i));
     }
     return 0;
