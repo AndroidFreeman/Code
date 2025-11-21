@@ -2,7 +2,7 @@
 int fun(int n){
     int a=1;
     a++;
-    return a+3;
+    return a+n;
 }
 int main(){
     int n;
