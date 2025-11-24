@@ -95,16 +95,16 @@ int main(){
     }
 
     //Program3
-    int n;
-    scanf("%d",&n);
-    double result=Fun3(n);
-    printf("%lf\n",result);
+    int nn;
+    scanf("%d",&nn);
+    double result3=Fun3(nn);
+    printf("%lf\n",result3);
 
     //Program4
     int j;
     scanf("%d",&j);
-    double result=Fun4(j);
-    printf("%d\n",result);
+    double result4=Fun4(j);
+    printf("%d\n",result4);
 
     //Program5
     const int N=10;
