@@ -128,7 +128,7 @@ int main(){
     int j_p4,k_p4;
     scanf("%d %d",&j_p4,&k_p4);
     double result4=Fun4(j_p4,k_p4);
-    printf("%d\n",result4);
+    printf("%lf\n",result4);
 
     //Program5
     const int N=5;
@@ -142,7 +142,7 @@ int main(){
     int answer_num=0;
     int input_arr[M];
     Fun6(M,&answer_num,input_arr);
-    for(int i=0;i<answer_number;i++){
-        printf("%d",input_arr[i]);
+    for(int i_6=0;i_6<answer_num;i_6++){
+        printf("%d",input_arr[i_6]);
     }
 }
