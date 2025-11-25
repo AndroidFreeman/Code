@@ -1,6 +1,8 @@
 #include<stdio.h>
 //Program1
-int Fun1(int input_1,int input_2)
+double Fun1(int input_1,int input_2){
+    
+}
 //Program2
 int Fun2(int n){
     if(n==0||n==1) return 1;
@@ -86,7 +88,17 @@ void Fun6(int M,int* answer_num,int input_arr[]){
 int main(){
     //Program1
     int input_1,input_2;
-    
+    int bigger,smaller;
+    scanf("%d %d",&input_1,&input_2);
+    if(input_1>input_2){
+        smaller=input_2;
+        bigger=input_1;
+    }else{
+        smaller=input_1;
+        bigger=input_2;
+    }
+    double ans_1=Fun1(bigger,smaller);
+    printf("%lf",ans_1);
 
 
 
