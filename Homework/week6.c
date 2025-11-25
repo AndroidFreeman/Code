@@ -1,5 +1,12 @@
 #include<stdio.h>
 //Program1
+double Fun1T(int number){
+    double answer=1;
+    for(int i=number;i>0;i--){
+        answer=answer*i;
+    }
+    return answer;
+}
 double Fun1(int input_1,int input_2){
     double upper=Fun1T(input_1);
     double down1=Fun1T(input_2);
@@ -120,7 +127,7 @@ int main(){
     //Program4
     int j_p4,k_p4;
     scanf("%d %d",&j_p4,&k_p4);
-    double result4=Fun4(j);
+    double result4=Fun4(j_p4,k_p4);
     printf("%d\n",result4);
 
     //Program5
