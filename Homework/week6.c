@@ -1,6 +1,6 @@
 #include<stdio.h>
 //Program1
-int Fun1(int )
+int Fun1(int input_1,int input_2)
 //Program2
 int Fun2(int n){
     if(n==0||n==1) return 1;
@@ -85,7 +85,8 @@ void Fun6(int M,int* answer_num,int input_arr[]){
 
 int main(){
     //Program1
-
+    int input_1,input_2;
+    
 
 
 
