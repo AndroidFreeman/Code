@@ -7,13 +7,6 @@ double Fun1(int input_1,int input_2){
     double answer=(upper/(down1*down2));
     return answer;
 }
-double Fun1T(int number){
-    double answer=1;
-    for(int i=number;i>0;i--){
-        answer=answer*i;
-    }
-    return answer;
-}
 //Program2
 int Fun2(int n){
     if(n==0||n==1) return 1;
@@ -125,13 +118,13 @@ int main(){
     printf("%lf\n",result3);
 
     //Program4
-    int j;
-    scanf("%d",&j);
+    int j_p4,k_p4;
+    scanf("%d %d",&j_p4,&k_p4);
     double result4=Fun4(j);
     printf("%d\n",result4);
 
     //Program5
-    const int N=10;
+    const int N=5;
     int arr[N];
     Fun5_1(arr,N);
     Fun5_2(arr,N);
@@ -142,7 +135,7 @@ int main(){
     int answer_num=0;
     int input_arr[M];
     Fun6(M,&answer_num,input_arr);
-    for(int i=0;i<M;i++){
+    for(int i=0;i<answer_number;i++){
         printf("%d",input_arr[i]);
     }
 }
