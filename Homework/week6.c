@@ -1,4 +1,6 @@
 #include<stdio.h>
+//Program1
+int Fun1(int )
 //Program2
 int Fun2(int n){
     if(n==0||n==1) return 1;
