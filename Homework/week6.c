@@ -1,5 +1,7 @@
 #include<stdio.h>
 
+//Program1
+
 double Fun1T(int number){
     double answer=1;
     for(int i=number;i>0;i--){
@@ -16,10 +18,16 @@ double Fun1(int input_1,int input_2){
     return answer;
 }
 
+
+//Program2
+
 int Fun2(int n){
     if(n==0||n==1) return 1;
     return n*Fun2(n-1);
 }
+
+
+//Program3
 
 double Fun3(int n){
     double result=0.0;
@@ -31,6 +39,9 @@ double Fun3(int n){
     return result;
 }
 
+
+//Program4
+
 int Fun4(int a,int b){
     int ones,tens,huns,thos,res;
     ones=a%10;tens=b/10;
@@ -38,6 +49,9 @@ int Fun4(int a,int b){
     res=ones+tens*10+huns*100+thos*1000;
     return res;
 }
+
+
+//Program5
 
 void Fun5_1(int* arr,int n){
     for(int i=0;i<n;i++){
@@ -47,7 +61,7 @@ void Fun5_1(int* arr,int n){
 
 void Fun5_2(int* arr,int n){
     int temp;
-    int *pMin = arr;
+    int *pMin=arr;
     for (int i = 1; i < n; i++) {
         if (*(arr + i) < *pMin) {
             pMin = arr + i;
@@ -76,6 +90,7 @@ void Fun5_3(int *arr,int n){
     printf("\n");
 }
 
+//Program6
 void Fun6(int M,int* answer_num,int input_arr[]){
     *answer_num=0;
     for(int i=2;i<M;i++){
@@ -94,6 +109,7 @@ void Fun6(int M,int* answer_num,int input_arr[]){
 }
 
 int main(){
+    //Program1
     int input_1,input_2;
     int bigger,smaller;
     scanf("%d %d",&input_1,&input_2);
@@ -107,6 +123,7 @@ int main(){
     double ans_1=Fun1(bigger,smaller);
     printf("%lf\n",ans_1);
 
+    //Program2
     int i,n,sum=0;
     scanf("%d",&n);
     for(i=1;i<=n;i++){
@@ -114,22 +131,27 @@ int main(){
     }
     printf("%d\n",sum);
 
+
+    //Program3
     int nn;
     scanf("%d",&nn);
     double result3=Fun3(nn);
     printf("%lf\n",result3);
 
+    //Program4
     int j_p4,k_p4;
     scanf("%d %d",&j_p4,&k_p4);
     double result4=Fun4(j_p4,k_p4);
     printf("%.0lf\n",result4);
 
+    //Program5
     const int N=10;
     int arr[N];
     Fun5_1(arr,N);
     Fun5_2(arr,N);
     Fun5_3(arr,N);
 
+    //Program6
     const int M=100;
     int answer_num=0;
     int input_arr[M];
@@ -138,6 +160,4 @@ int main(){
         printf("%d ",input_arr[i_6]);
     }
     printf("\n");
-
-    return 0;
 }
