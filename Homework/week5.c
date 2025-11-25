@@ -81,6 +81,9 @@ int main(){
 
     //Program5
     const int T_N=10;
-    
-
+    int input[T_N];
+    for(int i=0;i<10;i++){
+        scanf("%d",&input[i]);
+    }
+    int* p
 }
