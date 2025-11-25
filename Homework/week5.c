@@ -85,5 +85,7 @@ int main(){
     for(int i=0;i<10;i++){
         scanf("%d",&input[i]);
     }
-    int* p
+    int* p_1=input[0];
+    int* p_2=input[T_N];
+    
 }
