@@ -4,14 +4,13 @@ double Fun1(int input_1,int input_2){
     double upper=Fun1T(input_1);
     double down1=Fun1T(input_2);
     double down2=Fun1T(input_1-input_2);
-    double answer=(upper/down1/down2);
+    double answer=(upper/(down1*down2));
     return answer;
 }
 double Fun1T(int number){
-    int answer=1;
+    double answer=1;
     for(int i=number;i>0;i--){
         answer=answer*i;
-        Fun1T(i);
     }
     return answer;
 }
@@ -73,7 +72,7 @@ void Fun5_2(int* arr,int n){
 
 void Fun5_3(int *arr,int n){
     for(int i=0;i<n;i++){
-        printf("%d",*(arr+1));
+        printf("%d",*(arr+i));
     }
     printf("\n");
 }
@@ -81,9 +80,9 @@ void Fun5_3(int *arr,int n){
 //Program6
 void Fun6(int M,int* answer_num,int input_arr[]){
     *answer_num=0;
-    int isPrime=1;
     for(int i=2;i<M;i++){
-        for(int j=2;j<=i;j++){
+        int isPrime=1;
+        for(int j=2;j<i;j++){
             if(i%j==0){
                 isPrime=0;
                 break;
