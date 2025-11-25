@@ -25,7 +25,7 @@ double Fun3(int n){
     double result=0.0;
     double fm=0.0;
     for(int i=1;i<=n;i++){
-        fm+=1;
+        fm+=i;
         result+=1.0/fm;
     }
     return result;
