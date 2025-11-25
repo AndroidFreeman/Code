@@ -1,7 +1,13 @@
 #include<stdio.h>
 //Program1
 double Fun1(int input_1,int input_2){
-    
+    double upper=Fun1T(input_1);
+    double down1=Fun1T(input_2);
+    double down2=Fun1T(input_1-input_2);
+    double answer=(upper/down1/down2);
+}
+double Fun1T(int number){
+
 }
 //Program2
 int Fun2(int n){
