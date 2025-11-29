@@ -18,3 +18,15 @@ int main(){
     }
     return 0;
 }
+
+
+    int j=0;
+    for(;s2[j]!='\0';j++);
+    j--;
+    int min;
+    if(i>j){
+        min=j;
+    }else{
+        min=i;
+    }
+    int bool=0;
