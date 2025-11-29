@@ -66,6 +66,7 @@ int main(){
         stu[i].chi=chi;
         stu[i].id=i+1;
         stu[i].total=chi+math+eng;
+        
     }
 }
 
