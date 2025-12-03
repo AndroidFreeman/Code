@@ -4,11 +4,15 @@ int main(){
     for(int i=1;i<=20;i++){
         int a1=1;
         int a2=1;
-        int sum=2;
-        printf("%d",sum);
+        int sum=1;
         sum=sum+a2;
-        int temp;
-        
+        int temp=sum;
+        a1=a2;
+        a2=temp;
+        printf("%d",sum);
+
+
+
 
 
     }
