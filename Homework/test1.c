@@ -10,17 +10,16 @@ int strlen(char* str){
 
 int main(){
     //Program1
-    printf("1 1 ");
-    for(int i=1;i<=20;i++){
-        int a1=1;
-        int a2=1;
-        int sum=1;
+    int a1=1;
+    int a2=1;
+    printf("%d %d ",a1,a2);
+    for(int i=1;i<=18;i++){
         sum=sum+a2;
-        int temp=sum;
         a1=a2;
-        a2=temp;
+        a2=sum;
         printf("%d",sum);
     }
+    printf("\n");
 
     //Program2
     int yy,mm,dd;
@@ -47,8 +46,8 @@ int main(){
 
     //Program3
     char ch[2005];
-    scanf("%s",&ch);
-    int index=strlen()
+    scanf("%s",ch);
+    int index=strlen(ch);
     printf("%d",index);
 
     //Program4
@@ -56,7 +55,7 @@ int main(){
     int max=-1001;
     for(int i=0;i<3;i++){
         for(int j=0;j<4;j++){
-            scanf("%d",arr[i][j]);
+            scanf("%d",&arr[i][j]);
             if(arr[i][j]>max){
                 max=arr[i][j];
             }
