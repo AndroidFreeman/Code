@@ -4,10 +4,12 @@ int main(){
     for(int i=1;i<=20;i++){
         int a1=1;
         int a2=1;
-        int sum=0;
+        int sum=2;
         printf("%d",sum);
-
+        sum=sum+a2;
+        int temp;
         
+
 
     }
 
