@@ -13,6 +13,8 @@ int main(){
     }
 
     //Program2
+    int yy,mm,dd;
+    scanf("%d%d%d",&yy,&mm,&dd);
     
 }
 
