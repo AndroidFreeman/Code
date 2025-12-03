@@ -1,7 +1,11 @@
 #include<stdio.h>
 //Program3
 int strlen(char* str){
-    
+    int i=0;
+    while(str[i]!='\0'){
+        i++;
+    }
+    return i;
 }
 
 int main(){
@@ -42,7 +46,23 @@ int main(){
     printf("%d",day);
 
     //Program3
+    char ch[2005];
+    scanf("%s",&ch);
+    int index=strlen()
+    printf("%d",index);
 
+    //Program4
+    int arr[3][4];
+    int max=-1001;
+    for(int i=0;i<3;i++){
+        for(int j=0;j<4;j++){
+            scanf("%d",arr[i][j]);
+            if(arr[i][j]>max){
+                max=arr[i][j];
+            }
+        }
+    }
+    printf("%d",max);
 }
 
 
