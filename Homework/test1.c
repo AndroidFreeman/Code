@@ -3,10 +3,12 @@ int main(){
     //Program1
     for(int i=1;i<=20;i++){
         int a1=1;
-        int sum=1;
+        int a2=1;
+        int sum=0;
         printf("%d",sum);
-        sum=+a1;
+
         
+
     }
 
     //Program2
