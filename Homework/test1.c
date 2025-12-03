@@ -1,21 +1,23 @@
 #include<stdio.h>
 int main(){
     //Program1
-    int n=20;
-    int arr[n];
-    arr[0]=1;
-    arr[1]=1;
-    for(int i=2;i<n;i++){
-        arr[i]=arr[i-1]+arr[i-2];
-    }
-    for(int i=0;i<n;i++){
-        printf("%d",arr[i]);
+    for(int i=1;i<=20;i++){
+        int a1=1;
+        int sum=1;
+        printf("%d",sum);
+        sum=+a1;
+        
     }
 
     //Program2
     int yy,mm,dd;
+    int isR=0;
+    int day;
     scanf("%d%d%d",&yy,&mm,&dd);
-    if((yy%4==0||))
+    if((yy%4==0&&yy%100!=0)||(yy%400==0)){
+        isR=1;
+    }
+    int
 }
 
 
