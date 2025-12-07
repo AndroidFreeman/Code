@@ -134,7 +134,7 @@ int main(){
     Fun5_1(arr,N);
     Fun5_2(arr,N);
     Fun5_3(arr,N);
-    
+
     //Program6
     const int M=100;
     int answer_num=0;
