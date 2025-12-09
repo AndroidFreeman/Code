@@ -174,3 +174,37 @@ point_value=alien_0.get('color','NP')
 print(point_value)
 point_value=alien_0.get('points','NP')
 print(point_value)
+user_0={
+    'username':'efermi',
+    'first':'entico',
+    'last':'fermi',
+}
+for key,value in user_0.items():
+    print(f"Key: {key}")
+    print(f"Value: {value}")
+favorite_languages={
+    'jen':'python',
+    'sarah':'c',
+    'edward':'rust',
+    'phil':'python',
+}
+for name,language in favorite_languages.items():
+    print(f"{name.title()}'s favorite language is {language.title()}.")
+#遍历键与键值
+for name in favorite_languages:
+    print(name.title())
+#遍历键
+
+friends=['phil','sarah']
+#创建一个列表 包含朋友名字
+for name in favorite_languages.keys():
+    print(f"Hi,{name.title()}.")
+    if name in friends:
+    #如果名字在friends列表当中
+        language=favorite_languages[name].title()
+        print(f"\t {name.title()}, I see you love {language}!")
+for name in sorted(favorite_languages.keys()):
+    print(f"{name.title()},thank you for taking the poll.")
+print("The following languages have been mentioned:")
+for language in favorite_languages.values():
+    print(language.title())
