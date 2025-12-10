@@ -60,7 +60,6 @@ void srtrmv_new(char* ch){
     while(ch[index]>='0'||ch[index]<='9'){
         index++;
     }
-
 }
 void srtrmv(char* ch){
     //Step1-获得字符串长度
