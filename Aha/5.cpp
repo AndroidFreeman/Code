@@ -11,4 +11,8 @@ int main(){
     len=strlen(a);
     mid=len/2-1;
 
+    top=0;
+    for(i=0;i<=mid;i++){
+        s[++top]=a[i];
+    }
 }

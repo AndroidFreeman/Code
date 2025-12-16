@@ -12,7 +12,10 @@ void Init(LinkList *h){
 }
 void Print(LinkList h){
     LNode *p;
-    for(p=h->next;)
+    for(p=h->next;p!=NULL;p=p->next){
+        cout<<p->data;
+    }
+    cout<<endl;
 }
 int main(){
     LinkList head;
