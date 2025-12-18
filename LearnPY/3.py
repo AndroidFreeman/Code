@@ -8,7 +8,7 @@ print('The length of your name is: '+str(len(myName)))
 print('What is your age?')
 myAge=20
 print('You will be '+str(int(myAge)+1)+' in a year.')
-print(myName*5)
+# print(myName*5)
 
 name='Freeman'
 passwd='swordnewnew'
@@ -18,3 +18,4 @@ if name=='Freeman':
         print('Access granted.')
     else:
         print('Wrong passwd.')
+
