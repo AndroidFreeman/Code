@@ -27,6 +27,8 @@ while True:
         continue
     print('Hello Freeman! passwd pls')
     passwd=input()
-    if passwd=='swordnewnew':
+    if passwd!='swordnewnew':
+        print('Get away!')
+    else:
         break
 print('Access granted')
