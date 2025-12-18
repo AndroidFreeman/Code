@@ -6,6 +6,15 @@ print('It is good to meet you, '+myName)
 print('The length of your name is: '+str(len(myName)))
 # print(len(myName))
 print('What is your age?')
-myAge=input()
+myAge=20
 print('You will be '+str(int(myAge)+1)+' in a year.')
 print(myName*5)
+
+name='Freeman'
+passwd='swordnewnew'
+if name=='Freeman':
+    print('Hello,Freeman')
+    if passwd=='swordnewnew':
+        print('Access granted.')
+    else:
+        print('Wrong passwd.')
