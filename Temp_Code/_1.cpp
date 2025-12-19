@@ -17,3 +17,4 @@ void insert(ListNode *n0,ListNode *P){
     P->next=n1;
     n0->next=P;
 }
+
