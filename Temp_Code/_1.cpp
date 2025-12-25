@@ -18,4 +18,4 @@ void insert(ListNode *n0,ListNode *P){
     n0->next=P;
 }
 
-xc
+
