@@ -66,3 +66,18 @@ cheese[0]='Hello!'
 print(spam)
 print(id('Howdy'))
 print(id(spam+cheese))
+
+def eggs(someParameter):
+    someParameter.append('Hello')
+spam=[1,2,3]
+eggs(spam)
+print(spam)
+
+import copy
+spam=['A','B','C','D']
+print(id(spam))
+cheese =copy.copy(spam)
+print(id(cheese))
+cheese=spam
+print(id(cheese))
+cheese =copy.copy(spam)
