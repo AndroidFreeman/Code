@@ -24,3 +24,11 @@ catNames=[]
 # print('The cat names are:')
 # for name in catNames:
 #     print(name+' ')
+supplies=['pens','staplers','flamethrowers','binders']
+for index,item in enumerate(supplies):
+    print(str(index)+' '+item)
+
+import random
+pets=['Dog','Cat','Moose']
+print(random.choice(pets))
+
