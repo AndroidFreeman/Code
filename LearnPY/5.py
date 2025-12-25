@@ -15,12 +15,12 @@ print(temp)
 del spam[0]
 print(spam)
 catNames=[]
-while True:
-    print('Enter '+str(len(catNames)+1))
-    name=input()
-    if name=='':
-        break
-    catNames=catNames+[name]
-print('The cat names are:')
-for name in catNames:
-    print(name+' ')
+# while True:
+#     print('Enter '+str(len(catNames)+1))
+#     name=input()
+#     if name=='':
+#         break
+#     catNames=catNames+[name]
+# print('The cat names are:')
+# for name in catNames:
+#     print(name+' ')
