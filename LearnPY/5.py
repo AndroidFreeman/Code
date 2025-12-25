@@ -59,3 +59,10 @@ print(type((42)))
 print(tuple(('cat','dog',5)))
 print(list(['cat','dog',5]))
 print(list('Hello'))
+
+spam=[0,1,2,3,4]
+cheese=spam
+cheese[0]='Hello!'
+print(spam)
+print(id('Howdy'))
+print(id(spam+cheese))
