@@ -31,4 +31,19 @@ for index,item in enumerate(supplies):
 import random
 pets=['Dog','Cat','Moose']
 print(random.choice(pets))
-
+random.shuffle(pets)
+print(pets)
+spam=['hello','hi','howdy','heyas']
+print(spam.index('hello'))
+pets.append('Bat')
+pets.insert(1,'Chicken')
+print(pets)
+pets.remove('Cat')
+print(pets)
+# pets.insert(1,'Chicken')
+pets.insert(1,'Chicken')
+pets.remove('Chicken')
+# pets.remove('Chicken')
+print(pets)
+pets.sort()
+print(pets)
