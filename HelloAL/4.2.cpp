@@ -74,7 +74,6 @@ struct ListNode{
     int val;
     ListNode* next;
 };
-
 ListNode* newListNode(int val){
     ListNode* node=(ListNode*)malloc(sizeof(ListNode));
     if(!node) return nullptr;
@@ -97,6 +96,6 @@ void pushBack(ListNode** head,int val){
 }
 
 int main(){
-    LinkList* head;
+    struct ListNode* head;
     head->next=nullptr;
 }
