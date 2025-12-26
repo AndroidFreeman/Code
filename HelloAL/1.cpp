@@ -12,6 +12,11 @@ void insert(int *nums,int size,int num,int index){
     }
     nums[index]=num;
 }
+void remove(int *nums,int size,int index){
+    for(int i=index;i<size-1;i++){
+        nums[i]=nums[i+1];
+    }
+}
 int main(){
     int arr[10]={0};
     int nums[5]={1,3,2,5,4};
@@ -26,4 +31,5 @@ int main(){
         cout<<arr[i]<<" ";
     }
     cout<<endl;
+    remove(arr,10,5)
 }
