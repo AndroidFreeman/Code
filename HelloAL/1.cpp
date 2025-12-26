@@ -110,8 +110,7 @@ int find(int* nums,int size,int num){
     return -1;
 }
 int *extend(int* nums,int size,int enlarge){
-    size=size+enlarge;
-    int arr[size];
+    
     for(int i=0;i<size;i++){
         arr[i]=nums[i];
     }
