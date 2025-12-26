@@ -27,3 +27,4 @@ for i in eggs.items():
     print(i)
 
 picnicItems={'apple':5,'cpus':2}
+print(str(picnicItems.get('cpus',0)))
