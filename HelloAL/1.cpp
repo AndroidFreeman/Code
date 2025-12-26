@@ -7,13 +7,13 @@ int randomAccess(int *nums,int size){
     return randomNum;
 }
 void insert(int *nums,int size,int num,int index){
-    for(int i=size-1;i>index;i++){
+    for(int i=size-1;i>index;i--){
         nums[i]=nums[i-1];
     }
     nums[index]=num;
 }
 int main(){
-    int arr[10];
+    int arr[10]={0};
     int nums[5]={1,3,2,5,4};
     int* arr1=new int[5];
     int* nums1=new int[5]{1,3,2,5,4};
