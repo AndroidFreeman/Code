@@ -5,6 +5,24 @@ struct ListNode{
     int val;
     ListNode* next;
 };
+ListNode *access(ListNode* head,int index){
+    for(int i=0;i<index;i++){
+        if(head==NULL)
+            return NULL;
+        head=head->next;
+    }
+    return head;
+}
+int find(ListNode *head,int targer){
+    int index=0;
+    while(head){
+        if(head->val==targer)
+            return index;
+        head=head->next;
+        index++;
+    }
+    return -1;
+}
 ListNode *newListNode(int val){
     ListNode* node;
     node=(ListNode*)malloc(sizeof(ListNode));
