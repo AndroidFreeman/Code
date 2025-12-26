@@ -31,5 +31,9 @@ int main(){
         cout<<arr[i]<<" ";
     }
     cout<<endl;
-    remove(arr,10,5)
+    remove(arr,10,5);
+    for(int i=0;i<10;i++){
+        cout<<arr[i]<<" ";
+    }
+    cout<<endl;
 }
