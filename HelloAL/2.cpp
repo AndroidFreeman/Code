@@ -12,6 +12,11 @@ ListNode *newListNode(int val){
     node->next=NULL;
     return node;
 }
+void insert(ListNode *n0;ListNode*P){
+    ListNode *n1=n0->next;
+    P->next=n1;
+    n0->next=P;
+}
 int main(){
     ListNode* n0=newListNode(1);
     ListNode* n1=newListNode(3);
