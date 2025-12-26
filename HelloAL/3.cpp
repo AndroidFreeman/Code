@@ -20,4 +20,8 @@ int main(){
     vector<int> nums1={6,8,7,10,9};
     nums.insert(nums.end(),nums1.begin(),nums1.end());
     sort(nums.begin(),nums.end());
+    for(int i=0;i<nums.size();i++){
+        cout<<nums[i]<<" ";
+    }
+    cout<<endl;
 }
