@@ -28,3 +28,8 @@ for i in eggs.items():
 
 picnicItems={'apple':5,'cpus':2}
 print(str(picnicItems.get('cpus',0)))
+
+theBoard = {'top-L': ' ', 'top-M': ' ', 'top-R': ' ',
+            'mid-L': ' ', 'mid-M': ' ', 'mid-R': ' ',
+            'low-L': ' ', 'low-M': ' ', 'low-R': ' '}
+
