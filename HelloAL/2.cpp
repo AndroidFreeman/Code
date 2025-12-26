@@ -12,6 +12,15 @@ ListNode *newListNode(int val){
     node->next=NULL;
     return node;
 }
+void removeItem(ListNode* n0{
+    if(!n0->next){
+        return;
+    }
+    ListNode *P=n0->next;
+    ListNode *n1=P->next;
+    n0->next=n1;
+    free(P);
+})
 void insert(ListNode *n0;ListNode*P){
     ListNode *n1=n0->next;
     P->next=n1;
