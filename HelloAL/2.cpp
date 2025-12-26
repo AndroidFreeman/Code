@@ -83,6 +83,11 @@ ListNode* newListNode(int val){
     return node;
 }
 
+void pushBack(ListNode** head,int val){
+    ListNode* newNode=newListNode(val);
+    if()
+}
+
 int main(){
 
 }
