@@ -90,7 +90,7 @@ void pushBack(ListNode** head,int val){
         return;
     }
     ListNode* curr=*head;
-    while(curr.next!=nullptr){
+    while(curr->next!=nullptr){
         curr=curr->next;
     }
     curr->next=newNode;
