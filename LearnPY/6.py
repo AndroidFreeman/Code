@@ -26,4 +26,4 @@ for v in eggs.values():
 for i in eggs.items():
     print(i)
 
-p
+picnicItems={'apple':5,'cpus':2}
