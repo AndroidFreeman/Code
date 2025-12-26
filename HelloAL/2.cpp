@@ -97,5 +97,6 @@ void pushBack(ListNode** head,int val){
 }
 
 int main(){
-
+    LinkList* head;
+    head->next=nullptr;
 }
