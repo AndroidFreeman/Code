@@ -85,7 +85,15 @@ ListNode* newListNode(int val){
 
 void pushBack(ListNode** head,int val){
     ListNode* newNode=newListNode(val);
-    if()
+    if(*head==nullptr){
+        *head=newNode;
+        return;
+    }
+    ListNode* curr=*head;
+    while(curr.next!=nullptr){
+        curr=curr->next;
+    }
+    curr->next=newNode;
 }
 
 int main(){
