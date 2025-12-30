@@ -7,8 +7,10 @@ vals,vecs=np.linalg.eig(C)
 #eig是算特征值的函数 返回值有两个
 print(vals)
 print(vecs)
-print("\n")
 
 lambda_1=vals[0]
 v_1=vecs[:,0]
+left_side=C@v_1
+right_side=lambda_1*v_1
 
+print('vals'+str(vals))
