@@ -8,3 +8,7 @@ vals,vecs=np.linalg.eig(C)
 print(vals)
 print(vecs)
 print("\n")
+
+lambda_1=vals[0]
+v_1=vecs[:,0]
+
