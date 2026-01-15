@@ -1,7 +1,7 @@
-# -*- coding: gbk -*-
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
-
+matplotlib.use('Qt5Agg')
 def solve_linear_system():
     # 注意：函数内部的代码必须缩进
     print("Solving...")

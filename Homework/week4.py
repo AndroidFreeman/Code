@@ -1,6 +1,7 @@
-# -*- coding: gbk -*-
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('Qt5Agg')
 from sklearn.datasets import make_blobs
 from sklearn.preprocessing import StandardScaler
 

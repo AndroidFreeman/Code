@@ -1,6 +1,6 @@
 #include<stdio.h>
 int main(){
-    Program1
+    //Program1
     int number=0;
     printf("Enter the year:");
     scanf("%d", &number);

@@ -1,6 +1,7 @@
-# -*- coding: gbk -*-
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('Qt5Agg')
 from PIL import Image
 # 1. 读取图片并转为灰度图（请确保 test.jpg 在同一文件夹下，或修改为你的图片路径）
 img = Image.open('test.jpg').convert('L')

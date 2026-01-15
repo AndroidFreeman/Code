@@ -1,5 +1,7 @@
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
+matplotlib.use('Qt5Agg')
 class Shape2D:
     # 创建一个Shape2D的类
     def __init__(self, points):
