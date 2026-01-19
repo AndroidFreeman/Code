@@ -1,0 +1,22 @@
+# --- 系统与编辑器杂质 ---
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+
+# --- C/C++ 编译产物 ---
+*.out
+*.o
+*.exe
+*.bin
+
+# --- Python 环境与缓存 ---
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+
+# --- 临时测试文件 ---
+sync_test.txt
+temp/
