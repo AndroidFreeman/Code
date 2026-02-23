@@ -17,17 +17,17 @@ int main(){
     // printf("%lf\n",sum);
 
     //Program2
-    // double sum=1.0;
-    // int i=1;
-    // double p=1.0;
-    // double t=1.0;
-    // while(t>=1e-6){
-    //     sum+=t;
-    //     i++;
-    //     p=i*p;
-    //     t=1.0/p;
-    // }
-    // printf("%lf\n",sum);
+    double sum=1.0;
+    int i=1;
+    double p=1.0;
+    double t=1.0;
+    while(t>=1e-6){
+        sum+=t;
+        i++;
+        p=i*p;
+        t=1.0/p;
+    }
+    printf("%lf\n",sum);
 
     //Program3
     // int m;
