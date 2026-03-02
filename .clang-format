@@ -1,0 +1,9 @@
+BasedOnStyle: Google
+# 强制保持 Google 标准的 4 格缩进
+IndentWidth: 4
+# 允许短函数写在一行
+AllowShortFunctionsOnASingleLine: All
+# 限制单行长度，防止 vector 嵌套过长
+ColumnLimit: 80
+# 连续尖括号保留空格 (C++11 以后通常不需要，但 Google 风格较严谨)
+Standard: Cpp11
