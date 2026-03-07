@@ -14,14 +14,14 @@ int main() {
     cin.tie(nullptr);
 
     int number;
-    cin>>number;
-    vector<int> process(number,0);
-    for(int i=0;i<number;i++){
-        cin>>process[i];
+    cin >> number;
+    vector<int> process(number, 0);
+    for (int i = 0; i < number; i++) {
+        cin >> process[i];
     }
-    sort(process.begin(),process.end());
-    for(int i:process){
-        cout<<i<<" ";
+    sort(process.begin(), process.end());
+    for (int i : process) {
+        cout << i << " ";
     }
 
     return 0;

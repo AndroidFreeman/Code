@@ -13,20 +13,20 @@ int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    int total,bookshelf,count=0;
-    if(!(cin>>total>>bookshelf)) return -1;
+    int total, bookshelf, count = 0;
+    if (!(cin >> total >> bookshelf)) return -1;
     vector<int> cow(total);
-    for(int i=0;i<total;i++){
-        cin>>cow[i];
+    for (int i = 0; i < total; i++) {
+        cin >> cow[i];
     }
-    sort(cow.begin(),cow.end(),greater<int>());
-    int answer=0;
-    for(int i=0;i<total;i++){
-        count+=cow[i];
+    sort(cow.begin(), cow.end(), greater<int>());
+    int answer = 0;
+    for (int i = 0; i < total; i++) {
+        count += cow[i];
         answer++;
-        if(count>=bookshelf) break;
+        if (count >= bookshelf) break;
     }
-    cout<<answer;
+    cout << answer;
 
     return 0;
 }

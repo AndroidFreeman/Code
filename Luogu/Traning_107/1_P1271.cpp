@@ -13,16 +13,16 @@ int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    int people,choose,temp;
-    if(!(cin>>people>>choose)) return -1;
+    int people, choose, temp;
+    if (!(cin >> people >> choose)) return -1;
     vector<int> input(choose);
-    for(int i=0;i<choose;i++){
-        cin>>temp;
-        input[i]=temp;
+    for (int i = 0; i < choose; i++) {
+        cin >> temp;
+        input[i] = temp;
     }
-    sort(input.begin(),input.end());
-    for(int i:input){
-        cout<<i<<" ";
+    sort(input.begin(), input.end());
+    for (int i : input) {
+        cout << i << " ";
     }
     return 0;
 }

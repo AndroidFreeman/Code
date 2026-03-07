@@ -16,14 +16,14 @@ int main() {
     int total;
     if (!(cin >> total)) return 0;
     vector<int> number(total);
-    for(int i=0;i<total;i++){
-        cin>>number[i];
+    for (int i = 0; i < total; i++) {
+        cin >> number[i];
     }
-    sort(number.begin(),number.end());
-    number.erase(unique(number.begin(),number.end()),number.end());
-    cout<<number.size()<<endl;
-    for(int i:number){
-        cout<<i<<" ";
+    sort(number.begin(), number.end());
+    number.erase(unique(number.begin(), number.end()), number.end());
+    cout << number.size() << endl;
+    for (int i : number) {
+        cout << i << " ";
     }
 
     return 0;

@@ -18,7 +18,7 @@ int main() {
     // vector<int> number(total);
     // for(int i=0;i<total;i++){
     //     cin>>number[i];
-    // } 
+    // }
     // sort(number.begin(),number.end());
     // cout<<number[choose];
 
