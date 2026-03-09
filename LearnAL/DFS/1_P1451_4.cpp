@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * BTW, I use Arch 
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-09 10:47:33
+ * @LastEditTime: 2026-03-09 13:38:34
  * @FilePath: /Code_Sync/LearnAL/DFS/1_P1451_4.cpp
  */
 #include <bits/stdc++.h>
@@ -13,7 +13,7 @@ int n, m, answer = 0;
 
 void dfs(int x, int y) {
     if (x < 0 || y < 0 || x >= n || y >= m || matrix[x][y] == '0') return;
-    matrix[x][y] = 0;
+    matrix[x][y] = '0';
     int dx[] = {-1, 1, 0, 0};
     int dy[] = {0, 0, -1, 1};
     for (int i = 0; i < 4; i++) {
@@ -26,6 +26,7 @@ int main() {
     cin.tie(nullptr);
 
     if (!(cin >> n >> m)) return -1;
+    matrix.resize(n);
     for (int i = 0; i < n; i++) cin >> matrix[i];
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < m; j++) {
