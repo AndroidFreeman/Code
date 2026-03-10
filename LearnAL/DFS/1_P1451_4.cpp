@@ -10,7 +10,6 @@
 using namespace std;
 vector<string> matrix;
 int n, m, answer = 0;
-
 void dfs(int x, int y) {
     if (x < 0 || y < 0 || x >= n || y >= m || matrix[x][y] == '0') return;
     matrix[x][y] = '0';
@@ -20,11 +19,9 @@ void dfs(int x, int y) {
         dfs(x + dx[i], y + dy[i]);
     }
 }
-
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
-
     if (!(cin >> n >> m)) return -1;
     matrix.resize(n);
     for (int i = 0; i < n; i++) cin >> matrix[i];
