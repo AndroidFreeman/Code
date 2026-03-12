@@ -19,4 +19,6 @@ __pycache__/
 
 # --- 临时测试文件 ---
 sync_test.txt
-temp/
+temp/Homework_S1/env/
+**/venv/
+__pycache__/
