@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * BTW, I use Arch 
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-13 17:47:00
+ * @LastEditTime: 2026-03-18 16:37:51
  * @FilePath: /Code_Sync/Luogu/Training_743042/4_P5250.cpp
  */
 #include <bits/stdc++.h>
@@ -13,7 +13,7 @@ int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    set<int> s;
+    
     
 
     return 0;
