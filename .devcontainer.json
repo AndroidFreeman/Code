@@ -1,5 +1,5 @@
 {
-    "name": "Freeman-Pure-V7",
+    "name": "Android_Freeman's Codespace",
     // 1. 换成微软官方 Ubuntu 24.04 镜像，彻底甩掉 CS50 镜像
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
     
