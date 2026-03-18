@@ -1,38 +1,96 @@
 {
     "name": "Android_Freeman's Codespace",
-    // 1. 换成微软官方 Ubuntu 24.04 镜像，彻底甩掉 CS50 镜像
+    // 1. 彻底切断 CS50 镜像，使用微软原神 Ubuntu 24.04 镜像
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
-    
+
     "customizations": {
         "vscode": {
             "extensions": [
-                "llvm-vs-code-extensions.vscode-clangd", // 你的补全神器
-                "ms-vscode.cpptools",                   // C++ 调试基础
-                "OBKoro1.korofileheader",               // 你的 FileHeader
-                "catppuccin.catppuccin-vsc",            // 你的猫猫头主题
-                "catppuccin.catppuccin-vsc-icons",      // 漂亮的图标
-                "formulahendry.code-runner"             // 一键跑代码
+                "llvm-vs-code-extensions.vscode-clangd",
+                "ms-vscode.cpptools",
+                "OBKoro1.korofileheader",
+                "catppuccin.catppuccin-vsc",
+                "catppuccin.catppuccin-vsc-icons",
+                "formulahendry.code-runner",
+                "PKief.material-icon-theme"
             ],
             "settings": {
-                // 2. 拿回被 CS50 禁用的功能
-                "C_Cpp.autocomplete": "enabled",
-                "editor.suggestOnTriggerCharacters": true,
+                // --- 2. 界面 Rice (同步你的 Arch 极致流畅度) ---
+                "editor.fontSize": 26,
+                "editor.fontFamily": "'JetBrainsMono Nerd Font', 'Noto Sans SC', monospace",
+                "editor.fontLigatures": true,
+                "editor.letterSpacing": -0.2,
+                "workbench.iconTheme": "material-icon-theme",
+                "workbench.colorTheme": "Catppuccin Mocha",
+                "catppuccin.accentColor": "mauve",
+                "workbench.activityBar.location": "hidden",
+                "explorer.compactFolders": false,
+                "files.autoSave": "afterDelay",
+                "files.autoSaveDelay": 1000,
+                "editor.cursorBlinking": "solid",
+                "editor.cursorSmoothCaretAnimation": "off",
+                "editor.smoothScrolling": false,
+                "workbench.list.smoothScrolling": false,
+
+                // --- 3. 核心响应速度与代码提示 (解决 10ms 延迟感) ---
+                "editor.quickSuggestionsDelay": 10,
+                "editor.suggestSelection": "first",
+                "editor.acceptSuggestionOnEnter": "on",
+                "editor.hover.delay": 500,
                 "editor.quickSuggestions": {
-                    "other": "on",
-                    "comments": "off",
+                    "comments": "on",
                     "strings": "on"
                 },
-                "workbench.statusBar.visible": true,     // 让状态栏回来
-                "breadcrumbs.enabled": true,             // 让面包屑导航回来
-                "editor.minimap.enabled": true,          // 让缩略图回来
-                
-                // 3. 继承你的 Catppuccin 风格
-                "workbench.colorTheme": "Catppuccin Macchiato",
-                "workbench.iconTheme": "catppuccin-macchiato"
+
+                // --- 4. C/C++ 与 clangd 核心配置 (解决 CS50 拦截与红线) ---
+                "C_Cpp.intelliSenseEngine": "disabled", 
+                "editor.formatOnSave": true,
+                "[cpp]": {
+                    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+                    "editor.semanticHighlighting.enabled": true
+                },
+                "clangd.arguments": [
+                    "--header-insertion=never",
+                    "--header-insertion-decorators=0",
+                    "-j=4" // Codespace 2-core 限制下给 4 线程
+                ],
+                "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 4, ColumnLimit: 0 }",
+
+                // --- 5. koroFileHeader：自动生成 BTW, I use Arch ---
+                "fileheader.configObj": {
+                    "autoAdd": true, 
+                    "autoAddLine": 100,
+                    "createHeader": true,
+                    "autoAlready": true,
+                    "prohibitAutoAdd": ["json", "md"], 
+                    "wideNum": 13
+                },
+                "fileheader.customMade": {
+                    "Date": "Do not edit",
+                    "Github": "https://github.com/AndroidFreeman",
+                    "custom_string_obkoro2": "BTW, I use Arch ",
+                    "Author": "Android_Freeman",
+                    "LastEditTime": "Do not edit",
+                    "FilePath": "Do not edit"
+                },
+
+                // --- 6. Code Runner 路径修正 ---
+                "code-runner.runInTerminal": true,
+                "code-runner.executorMap": {
+                    "cpp": "cd $dir && g++ -std=c++17 $fileName -o $fileNameWithoutExt && ./$fileNameWithoutExt",
+                    "python": "python3 -u $fullFileName"
+                },
+
+                // --- 7. 开启被 CS50 禁用的 UI 组件 ---
+                "workbench.statusBar.visible": true,
+                "breadcrumbs.enabled": true,
+                "editor.minimap.enabled": true,
+                "git.enabled": true,
+                "git.autofetch": true
             }
         }
     },
-    
-    // 4. 自动安装环境，不用你进去手动敲
+
+    // 8. 自动安装环境：解决你之前全红报错的问题
     "postCreateCommand": "sudo apt update && sudo apt install -y build-essential g++ gdb fastfetch"
 }
