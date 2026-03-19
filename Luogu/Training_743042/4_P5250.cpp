@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-18 12:26:07
+ * @LastEditTime: 2026-03-19 02:09:50
  * @FilePath: /Code/Luogu/Training_743042/4_P5250.cpp
  */
 #include <bits/stdc++.h>
@@ -24,6 +24,32 @@ int main(){
         }else{
             if(wood.empty()){
                 cout<<"Empty"<<endl;
+                continue;
+            }else{
+                auto it=wood.lower_bound(len);
+                if(it!=wood.end()&&*it==len){
+                    cout<<*it<<endl;
+                    wood.erase(it);
+                }else{
+                    if(it==wood.begin()){
+                        cout<<*it<<endl;
+                        wood.erase(it);
+                    }else if (it==wood.end()){
+                        auto target=prev(it);
+                        cout<<*target<<endl;
+                        wood.erase(target);
+                    }else{
+                        auto right=it;
+                        auto left=prev(it);
+                        if(len-*left<=*right-len){
+                            cout<<*left<<endl;
+                            wood.erase(left);
+                        }else{
+                            cout<<*right<<endl;
+                            wood.erase(right);
+                        }
+                    }
+                }
             }
         }
     }
