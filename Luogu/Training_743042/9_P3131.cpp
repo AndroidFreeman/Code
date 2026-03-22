@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-19 12:23:46
+ * @LastEditTime: 2026-03-22 10:25:26
  * @FilePath: /Code/Luogu/Training_743042/9_P3131.cpp
  */
 #include <bits/stdc++.h>
