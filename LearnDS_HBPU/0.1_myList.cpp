@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-23 09:00:17
+ * @LastEditTime: 2026-03-23 09:06:45
  * @FilePath: /Code/LearnDS_HBPU/0.1_myList.cpp
  */
 #include <bits/stdc++.h>
@@ -62,9 +62,9 @@ string ListDelete(SqList& L, int i) {
 }
 
 int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(0);
-    cout.tie(0);
+    // ios::sync_with_stdio(false);
+    // cin.tie(0);
+    // cout.tie(0);
 
     SqList L;
     if (InitList(L) != "OK") {
