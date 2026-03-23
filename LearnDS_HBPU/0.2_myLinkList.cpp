@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-23 10:14:26
+ * @LastEditTime: 2026-03-23 10:15:29
  * @FilePath: /Code/LearnDS_HBPU/0.2_myLinkList.cpp
  */
 #include <bits/stdc++.h>
@@ -110,40 +110,42 @@ int main() {
             ElemType e;
             cout << "请输入插入位置和数值: " << endl;
             cin >> i >> e;
-            if (LinkInsert(L, i, e)) cout << "插入成功！" << endl;
-            else cout << "插入失败，位置非法" << endl;
-        } 
-        else if (choice == 2) {
+            if (LinkInsert(L, i, e))
+                cout << "插入成功！" << endl;
+            else
+                cout << "插入失败，位置非法" << endl;
+        } else if (choice == 2) {
             int i;
             cout << "请输入要删除的位置: " << endl;
             cin >> i;
-            if (ListDelete(L, i)) cout << "删除成功！" << endl;
-            else cout << "删除失败，位置不存在" << endl;
-        } 
-        else if (choice == 3) {
+            if (ListDelete(L, i))
+                cout << "删除成功！" << endl;
+            else
+                cout << "删除失败，位置不存在" << endl;
+        } else if (choice == 3) {
             ElemType e;
             cout << "请输入要查找的数值: " << endl;
             cin >> e;
             LNode* res = LocateElem(L, e);
-            if (res) cout << "查找成功，元素地址为: " << res << endl;
-            else cout << "查找失败，该值不在链表中" << endl;
-        } 
-        else if (choice == 4) {
+            if (res)
+                cout << "查找成功，元素地址为: " << res << endl;
+            else
+                cout << "查找失败，该值不在链表中" << endl;
+        } else if (choice == 4) {
             int i;
             ElemType e;
             cout << "请输入获取位置: " << endl;
             cin >> i;
-            if (GetElem(L, i, e)) cout << "第 " << i << " 个元素的值为: " << e << endl;
-            else cout << "获取失败，位置无效" << endl;
-        } 
-        else if (choice == 5) {
+            if (GetElem(L, i, e))
+                cout << "第 " << i << " 个元素的值为: " << e << endl;
+            else
+                cout << "获取失败，位置无效" << endl;
+        } else if (choice == 5) {
             PrintList(L);
-        } 
-        else if (choice == 0) {
+        } else if (choice == 0) {
             cout << "正在退出系统..." << endl;
             break;
-        } 
-        else {
+        } else {
             cout << "无效选择，请重新输入" << endl;
         }
     }
