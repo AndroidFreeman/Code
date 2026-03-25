@@ -22,3 +22,33 @@ sync_test.txt
 temp/Homework_S1/env/
 **/venv/
 __pycache__/
+
+# 忽略 Flutter 缓存和构建产物
+**/.dart_tool/
+**/build/
+**/.idea/
+**/.vscode/
+**/*.iml
+
+# 忽略安卓/iOS 的本地配置
+**/android/.gradle/
+**/ios/.generated/
+**/ios/Pods/
+
+# --- Flutter & Dart 深度清理 ---
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+**/.dart_tool/
+
+# 这里的 **/ 是灵魂，无论你把项目埋多深，它都能挖出来杀掉
+**/.idea/
+**/.vscode/
+**/*.iml
+**/android/.gradle/
+**/ios/.generated/
+**/ios/Pods/
+**/ios/.symlinks/
