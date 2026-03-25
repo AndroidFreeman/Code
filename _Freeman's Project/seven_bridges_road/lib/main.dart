@@ -97,7 +97,7 @@ class _ManagementPanelState extends State<ManagementPanel> {
                     ),
                   ),
                   const Text(
-                    "管理信息系统 - 2026 软件杯选拔赛",
+                    "管理信息系统",
                     style: TextStyle(color: Colors.white38, fontSize: 12),
                   ),
                   const SizedBox(height: 25),
