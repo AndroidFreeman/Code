@@ -1,3 +1,11 @@
+/*
+ * @Date: 2026-03-25 14:26:00
+ * @Github: https://github.com/AndroidFreeman
+ * BTW, I use Arch 
+ * @Author: Android_Freeman
+ * @LastEditTime: 2026-03-25 22:14:48
+ * @FilePath: /Code_Sync/_Freeman's Project/seven_bridges_road/test/widget_test.dart
+ */
 // This is a basic Flutter widget test.
 //
 // To perform an interaction with a widget in your test, use the WidgetTester
@@ -13,7 +21,7 @@ import 'package:seven_bridges_road/main.dart';
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const NewKidApp());
+    await tester.pumpWidget(const LBGApp());
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);
