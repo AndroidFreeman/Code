@@ -3,14 +3,14 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-23 10:15:29
+ * @LastEditTime: 2026-03-26 10:17:16
  * @FilePath: /Code/LearnDS_HBPU/0.2_myLinkList.cpp
  */
 #include <bits/stdc++.h>
 
 using namespace std;
 
-typedef int ElemType;
+typedef long long ElemType;
 
 typedef struct LNode {
     ElemType data;
