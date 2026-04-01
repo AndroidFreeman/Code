@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-03-26 22:44:57
+ * @LastEditTime: 2026-03-30 23:55:32
  * @FilePath: /Code/_CProgram/find.cpp
  */
 #include <bits/stdc++.h>
@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
 
     // ---- 第三步：执行你的逻辑（比如写文件、计算等） ----
     // 这里是你的核心代码，比如把数据存进 CSV 文件
-    FILE* file = fopen("database.csv", "a");  // 以“追加”模式打开文件
+    FILE* file = fopen("leavingapprove.csv", "s");  // 以“追加”模式打开文件
     if (file == NULL) {
         printf("{\"status\":\"error\", \"message\":\"无法打开数据库文件\"}\n");
         return 1;
