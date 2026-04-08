@@ -1,28 +1,25 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path/path.dart' as p;
+import '../services/native_features.dart';
 
 class TodoFoldersStore {
   final String dataDir;
+  final String? nativeLibDir;
 
-  const TodoFoldersStore({required this.dataDir});
-
-  File get _file => File(p.join(dataDir, 'todo_folders.json'));
+  const TodoFoldersStore({required this.dataDir, this.nativeLibDir});
 
   Future<List<String>> listFolders() async {
     final set = <String>{'默认'};
     try {
-      if (!await _file.exists()) {
-        final list = set.toList()..sort();
-        return list;
-      }
-      final content = await _file.readAsString(encoding: utf8);
-      final decoded = jsonDecode(content);
-      if (decoded is List) {
-        for (final e in decoded) {
-          final s = e.toString().trim();
-          if (s.isNotEmpty) set.add(s);
+      final features = NativeFeatures(dataDir: dataDir, nativeLibDir: nativeLibDir);
+      final res = await features.jsonOp(action: 'read', file: 'todo_folders.json');
+      if (res['ok'] == true && res['data'] != null) {
+        final decoded = res['data'];
+        if (decoded is List) {
+          for (final e in decoded) {
+            final s = e.toString().trim();
+            if (s.isNotEmpty) set.add(s);
+          }
         }
       }
     } catch (_) {}
@@ -36,7 +33,8 @@ class TodoFoldersStore {
     final folders = await listFolders();
     final set = folders.toSet()..add(v);
     final list = set.toList()..sort();
-    await _file.writeAsString(jsonEncode(list), encoding: utf8);
+    final features = NativeFeatures(dataDir: dataDir, nativeLibDir: nativeLibDir);
+    await features.jsonOp(action: 'write', file: 'todo_folders.json', data: list);
   }
 
   Future<void> deleteFolder(String name) async {
@@ -45,7 +43,8 @@ class TodoFoldersStore {
     final folders = await listFolders();
     final set = folders.toSet()..remove(v);
     final list = set.toList()..sort();
-    await _file.writeAsString(jsonEncode(list), encoding: utf8);
+    final features = NativeFeatures(dataDir: dataDir, nativeLibDir: nativeLibDir);
+    await features.jsonOp(action: 'write', file: 'todo_folders.json', data: list);
   }
 }
 
