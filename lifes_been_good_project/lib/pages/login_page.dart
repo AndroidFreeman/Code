@@ -417,13 +417,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     decoration: BoxDecoration(
                       color: cs.primary,
                       borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: cs.primary.withOpacity(0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 6),
-                        )
-                      ],
                     ),
                     alignment: Alignment.center,
                     child: _loading
