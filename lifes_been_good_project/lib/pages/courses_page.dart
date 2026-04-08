@@ -39,58 +39,20 @@ class _CoursesPageState extends State<CoursesPage> {
     _refresh();
   }
 
-  Future<File> _coursesFile() async {
-    return File(p.join(widget.session.dataDir, 'courses.csv'));
-  }
-
-  Future<File> _courseMembersFile() async {
-    return File(p.join(widget.session.dataDir, 'course_members.csv'));
-  }
-
-  Future<void> _ensureFile(File f, String header) async {
-    if (await f.exists()) {
-      final content = await f.readAsString(encoding: utf8);
-      final lines = const LineSplitter().convert(content);
-      if (lines.isNotEmpty && lines.first.trim() == header) return;
-      if (lines.isEmpty) {
-        await f.writeAsString('$header\n', encoding: utf8);
-      }
-      return;
-    }
-    await f.writeAsString('$header\n', encoding: utf8);
-  }
-
-  Future<List<Map<String, String>>> _readCsvRows(File f) async {
-    if (!await f.exists()) return const [];
-    final content = await f.readAsString(encoding: utf8);
-    final lines = const LineSplitter()
-        .convert(content)
-        .where((e) => e.trim().isNotEmpty)
-        .toList();
-    if (lines.isEmpty) return const [];
-    final headers = lines.first.split(',');
-    final rows = <Map<String, String>>[];
-    for (var i = 1; i < lines.length; i++) {
-      final parts = lines[i].split(',');
-      final row = <String, String>{};
-      for (var j = 0; j < headers.length && j < parts.length; j++) {
-        row[headers[j]] = parts[j];
-      }
-      rows.add(row);
-    }
-    return rows;
+  Future<List<Map<String, String>>> _readCsvRows(String filename) async {
+    final res = await widget.session.features.csvOp(action: 'read', file: filename);
+    if (res['ok'] != true) return [];
+    final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
+    return items.map((e) => (e as Map).cast<String, String>()).toList();
   }
 
   Future<void> _writeCsv(
-    File f,
+    String filename,
     List<String> headers,
     List<Map<String, String>> rows,
   ) async {
-    final out = <String>[headers.join(',')];
-    for (final r in rows) {
-      out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
-    }
-    await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await widget.session.features
+        .csvOp(action: 'write', file: filename, headers: headers, rows: rows);
   }
 
   Future<String?> _findMyStudentId() async {
@@ -118,9 +80,7 @@ class _CoursesPageState extends State<CoursesPage> {
   }
 
   Future<Map<String, Set<String>>> _loadMembersByCourse() async {
-    final f = await _courseMembersFile();
-    if (!await f.exists()) return const {};
-    final rows = await _readCsvRows(f);
+    final rows = await _readCsvRows('course_members.csv');
     final map = <String, Set<String>>{};
     for (final r in rows) {
       final courseId = (r['course_id'] ?? '').trim();
@@ -129,6 +89,54 @@ class _CoursesPageState extends State<CoursesPage> {
       map.putIfAbsent(courseId, () => <String>{}).add(studentId);
     }
     return map;
+  }
+
+  Future<void> _joinCourse(Course c, String studentId) async {
+    try {
+      setState(() {
+        _loading = true;
+      });
+      final rows = await _readCsvRows('course_members.csv');
+      final headers = ['id', 'course_id', 'student_id'];
+      final exists = rows
+          .any((r) => r['course_id'] == c.id && r['student_id'] == studentId);
+      if (!exists) {
+        final newId = 'cm_${DateTime.now().millisecondsSinceEpoch}';
+        rows.add({
+          'id': newId,
+          'course_id': c.id,
+          'student_id': studentId,
+        });
+        await _writeCsv('course_members.csv', headers, rows);
+      }
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _status = e.toString();
+      });
+    }
+  }
+
+  Future<void> _leaveCourse(Course c, String studentId) async {
+    try {
+      setState(() {
+        _loading = true;
+      });
+      final rows = await _readCsvRows('course_members.csv');
+      final headers = ['id', 'course_id', 'student_id'];
+      rows.removeWhere(
+          (r) => r['course_id'] == c.id && r['student_id'] == studentId);
+      await _writeCsv('course_members.csv', headers, rows);
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _status = e.toString();
+      });
+    }
   }
 
   List<Course> _filterVisibleCourses({
@@ -226,6 +234,17 @@ class _CoursesPageState extends State<CoursesPage> {
     final res = await showDialog<String>(
       context: context,
       builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        final inputTheme = InputDecoration(
+          filled: true,
+          fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(28),
+            borderSide: BorderSide.none,
+          ),
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+        );
+
         return AlertDialog(
           title: Text(loc.t('创建课程', 'Create Course')),
           content: SizedBox(
@@ -235,16 +254,14 @@ class _CoursesPageState extends State<CoursesPage> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: InputDecoration(
-                      labelText: loc.t('课程名', 'Course Name'),
-                      border: const OutlineInputBorder()),
+                  decoration: inputTheme.copyWith(
+                      labelText: loc.t('课程名', 'Course Name')),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: termCtrl,
-                  decoration: InputDecoration(
-                      labelText: loc.t('学期代码', 'Term Code'),
-                      border: const OutlineInputBorder()),
+                  decoration: inputTheme.copyWith(
+                      labelText: loc.t('学期代码', 'Term Code')),
                 ),
               ],
             ),
@@ -284,8 +301,6 @@ class _CoursesPageState extends State<CoursesPage> {
     });
 
     try {
-      final coursesFile = await _coursesFile();
-      await _ensureFile(coursesFile, _coursesHeader);
       final courseId = 'c_${DateTime.now().millisecondsSinceEpoch}';
       final row = <String, String>{
         'id': courseId,
@@ -294,27 +309,14 @@ class _CoursesPageState extends State<CoursesPage> {
         'term_code': term.replaceAll(',', ''),
       };
 
-      final content = await coursesFile.readAsString(encoding: utf8);
-      final lines = const LineSplitter()
-          .convert(content)
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-      final headers = (lines.isEmpty ? _coursesHeader : lines.first).split(',');
-      final rows = await _readCsvRows(coursesFile);
+      final rows = await _readCsvRows('courses.csv');
+      final headers = _coursesHeader.split(',');
       rows.add(row);
-      await _writeCsv(coursesFile, headers, rows);
+      await _writeCsv('courses.csv', headers, rows);
 
       if (_myStudentId != null) {
-        final mFile = await _courseMembersFile();
-        await _ensureFile(mFile, _courseMembersHeader);
-        final mContent = await mFile.readAsString(encoding: utf8);
-        final mLines = const LineSplitter()
-            .convert(mContent)
-            .where((e) => e.trim().isNotEmpty)
-            .toList();
-        final mHeaders =
-            (mLines.isEmpty ? _courseMembersHeader : mLines.first).split(',');
-        final mRows = await _readCsvRows(mFile);
+        final mRows = await _readCsvRows('course_members.csv');
+        final mHeaders = _courseMembersHeader.split(',');
         final exists = mRows.any(
           (r) =>
               (r['course_id'] ?? '').trim() == courseId &&
@@ -326,7 +328,7 @@ class _CoursesPageState extends State<CoursesPage> {
             'course_id': courseId,
             'student_id': _myStudentId!,
           });
-          await _writeCsv(mFile, mHeaders, mRows);
+          await _writeCsv('course_members.csv', mHeaders, mRows);
         }
       }
 
@@ -354,6 +356,7 @@ class _CoursesPageState extends State<CoursesPage> {
                         session: widget.session,
                         courseId: c.id,
                         courseName: c.courseName,
+                        isStandalone: true,
                       ),
                     ),
                   );
