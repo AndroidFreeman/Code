@@ -1,7 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-import 'package:path/path.dart' as p;
-
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
@@ -71,25 +67,11 @@ class _ClassAttendanceOverviewPageState
     _refresh();
   }
 
-  Future<List<Map<String, String>>> _readCsvRows(File f) async {
-    if (!await f.exists()) return const [];
-    final content = await f.readAsString(encoding: utf8);
-    final lines = const LineSplitter()
-        .convert(content)
-        .where((e) => e.trim().isNotEmpty)
-        .toList();
-    if (lines.length <= 1) return const [];
-    final headers = lines.first.split(',').map((e) => e.trim()).toList();
-    final rows = <Map<String, String>>[];
-    for (var i = 1; i < lines.length; i++) {
-      final parts = lines[i].split(',');
-      final row = <String, String>{};
-      for (var j = 0; j < headers.length && j < parts.length; j++) {
-        row[headers[j]] = parts[j];
-      }
-      rows.add(row);
-    }
-    return rows;
+  Future<List<Map<String, String>>> _readCsvRows(String filename) async {
+    final res = await widget.session.features.csvOp(action: 'read', file: filename);
+    if (res['ok'] != true) return [];
+    final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
+    return items.map((e) => (e as Map).cast<String, String>()).toList();
   }
 
   Future<List<Student>> _loadStudents() async {
@@ -102,11 +84,15 @@ class _ClassAttendanceOverviewPageState
       studentsRes = await cli.call('students.list', {});
     }
     if (studentsRes['ok'] != true) return const [];
+
     final raw = (((studentsRes['data'] ?? const {}) as Map)['items'] ??
         const []) as List;
-    return raw
-        .map((e) => Student.fromJson((e as Map).cast<String, dynamic>()))
-        .toList();
+    final uniqueStudents = <String, Student>{};
+    for (final e in raw) {
+      final s = Student.fromJson((e as Map).cast<String, dynamic>());
+      uniqueStudents[s.studentNo] = s;
+    }
+    return uniqueStudents.values.toList();
   }
 
   Future<void> _refresh() async {
@@ -146,17 +132,13 @@ class _ClassAttendanceOverviewPageState
 
       final todayStr = DateTime.now().toIso8601String().substring(0, 10);
 
-      final sessionsFile =
-          File(p.join(widget.session.dataDir, 'attendance_sessions.csv'));
-      final sessions = await _readCsvRows(sessionsFile);
+      final sessions = await _readCsvRows('attendance_sessions.csv');
       final todaySessionIds = sessions
           .where((s) => (s['started_at'] ?? '').startsWith(todayStr))
           .map((s) => s['id'])
           .toSet();
 
-      final recordsFile =
-          File(p.join(widget.session.dataDir, 'attendance_records.csv'));
-      final records = await _readCsvRows(recordsFile);
+      final records = await _readCsvRows('attendance_records.csv');
 
       // Find all students on leave today across ALL sessions
       final allTodaySessionIds = sessions
@@ -191,29 +173,26 @@ class _ClassAttendanceOverviewPageState
         final sid = (r['student_id'] ?? '').trim();
         if (sid.isEmpty) continue;
         final st = (r['status'] ?? '').trim();
-        if (st != 'present' && st != 'late' && st != 'absent' && st != 'leave')
-          continue;
         final m = counts.putIfAbsent(
             sid, () => {'present': 0, 'late': 0, 'absent': 0, 'leave': 0});
-        m[st] = (m[st] ?? 0) + 1;
+        if (st == 'present' ||
+            st == 'late' ||
+            st == 'absent' ||
+            st == 'leave') {
+          m[st] = (m[st] ?? 0) + 1;
+        }
       }
 
       final rows = filtered.map((s) {
         final m =
             counts[s.id] ?? {'present': 0, 'late': 0, 'absent': 0, 'leave': 0};
 
-        // If no records in current sessions but student is on leave today, count it
-        var leaveCount = m['leave'] ?? 0;
-        if (leaveCount == 0 && studentsOnLeaveToday.contains(s.id)) {
-          leaveCount = 1;
-        }
-
         return _Row(
           student: s,
           present: m['present'] ?? 0,
           late: m['late'] ?? 0,
           absent: m['absent'] ?? 0,
-          leave: leaveCount,
+          leave: m['leave'] ?? 0,
         );
       }).toList(growable: false);
       rows.sort((a, b) => a.student.studentNo.compareTo(b.student.studentNo));
@@ -240,23 +219,42 @@ class _ClassAttendanceOverviewPageState
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final loc = Provider.of<LocaleProvider>(context);
+    final isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    final showDrawerButton = !isDesktop || isPortrait;
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              ScaffoldState? scaffold = Scaffold.maybeOf(context);
-              if (scaffold != null && !scaffold.hasDrawer) {
-                scaffold =
-                    scaffold.context.findAncestorStateOfType<ScaffoldState>();
-              }
-              scaffold?.openDrawer();
-            },
-          ),
+        title: Text(
+          loc.t('班级考勤', 'Class Attendance'),
+          style: Theme.of(context)
+              .textTheme
+              .titleLarge
+              ?.copyWith(fontWeight: FontWeight.bold),
         ),
-        title: Text(loc.t('考勤', 'Attendance')),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
+        leadingWidth: showDrawerButton ? 56.0 : 16.0,
+        leading: showDrawerButton
+            ? Builder(
+                builder: (context) {
+                  return IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () {
+                      ScaffoldState? scaffold = Scaffold.maybeOf(context);
+                      if (scaffold != null && !scaffold.hasDrawer) {
+                        scaffold = scaffold.context
+                            .findAncestorStateOfType<ScaffoldState>();
+                      }
+                      scaffold?.openDrawer();
+                    },
+                  );
+                },
+              )
+            : const SizedBox.shrink(),
         actions: [
           if (_myClasses.isNotEmpty)
             Padding(
@@ -331,14 +329,14 @@ class _ClassAttendanceOverviewPageState
                                                         title:
                                                             '${loc.t('到勤', 'Present')}\n$totalPresent',
                                                         radius: 30,
-                                                        titleStyle:
-                                                            const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                                color: Colors
-                                                                    .white),
+                                                        titlePositionPercentageOffset:
+                                                            1.6,
+                                                        titleStyle: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                cs.onSurface),
                                                       ),
                                                     if (totalLate > 0)
                                                       PieChartSectionData(
@@ -356,14 +354,14 @@ class _ClassAttendanceOverviewPageState
                                                         title:
                                                             '${loc.t('迟到', 'Late')}\n$totalLate',
                                                         radius: 30,
-                                                        titleStyle:
-                                                            const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                                color: Colors
-                                                                    .white),
+                                                        titlePositionPercentageOffset:
+                                                            1.6,
+                                                        titleStyle: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                cs.onSurface),
                                                       ),
                                                     if (totalAbsent > 0)
                                                       PieChartSectionData(
@@ -380,14 +378,14 @@ class _ClassAttendanceOverviewPageState
                                                         title:
                                                             '${loc.t('缺勤', 'Absent')}\n$totalAbsent',
                                                         radius: 30,
-                                                        titleStyle:
-                                                            const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                                color: Colors
-                                                                    .white),
+                                                        titlePositionPercentageOffset:
+                                                            1.6,
+                                                        titleStyle: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                cs.onSurface),
                                                       ),
                                                     if (totalLeave > 0)
                                                       PieChartSectionData(
@@ -405,14 +403,14 @@ class _ClassAttendanceOverviewPageState
                                                         title:
                                                             '${loc.t('请假', 'Leave')}\n$totalLeave',
                                                         radius: 30,
-                                                        titleStyle:
-                                                            const TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .normal,
-                                                                color: Colors
-                                                                    .white),
+                                                        titlePositionPercentageOffset:
+                                                            1.6,
+                                                        titleStyle: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                cs.onSurface),
                                                       ),
                                                   ],
                                                 ),
@@ -447,6 +445,66 @@ class _ClassAttendanceOverviewPageState
                                             ],
                                           ),
                                   ),
+                                  const SizedBox(height: 14),
+                                  Column(
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Expanded(
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: _LegendChip(
+                                                color: cs.primary,
+                                                label: loc.t('到勤', 'Present'),
+                                                value: totalPresent,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: _LegendChip(
+                                                color: cs.tertiary,
+                                                label: loc.t('迟到', 'Late'),
+                                                value: totalLate,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Expanded(
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: _LegendChip(
+                                                color: cs.error,
+                                                label: loc.t('缺勤', 'Absent'),
+                                                value: totalAbsent,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: _LegendChip(
+                                                color: cs.secondary,
+                                                label: loc.t('请假', 'Leave'),
+                                                value: totalLeave,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                   const SizedBox(height: 32),
 
                                   // Expandable List
@@ -479,37 +537,75 @@ class _ClassAttendanceOverviewPageState
                                           children: [
                                             const Divider(height: 1),
                                             ListTile(
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 10),
                                               title: Text(
-                                                  '${r.student.fullName}（${r.student.studentNo}）'),
-                                              subtitle:
-                                                  Text(r.student.classCode),
-                                              trailing: SingleChildScrollView(
-                                                scrollDirection:
-                                                    Axis.horizontal,
-                                                child: Wrap(
-                                                  spacing: 10,
+                                                r.student.fullName,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              subtitle: Padding(
+                                                padding: const EdgeInsets.only(
+                                                    top: 4),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
                                                   children: [
-                                                    _MiniBadge(
-                                                        label: loc.t('到', 'P'),
-                                                        value: r.present,
-                                                        color: cs.primary),
-                                                    _MiniBadge(
-                                                        label: loc.t('迟', 'L'),
-                                                        value: r.late,
-                                                        color: cs.tertiary),
-                                                    _MiniBadge(
-                                                        label: loc.t('缺', 'A'),
-                                                        value: r.absent,
-                                                        color: cs.error),
-                                                    _MiniBadge(
-                                                        label: loc.t('假', 'Lv'),
-                                                        value: r.leave,
-                                                        color: cs.secondary),
-                                                    const Icon(
-                                                        Icons.chevron_right),
+                                                    Text(
+                                                      r.student.studentNo,
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                              color: cs
+                                                                  .onSurfaceVariant),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      r.student.classCode,
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                              color: cs
+                                                                  .onSurfaceVariant),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Wrap(
+                                                      spacing: 10,
+                                                      runSpacing: 6,
+                                                      children: [
+                                                        _MiniBadge(
+                                                            label:
+                                                                loc.t('到', 'P'),
+                                                            value: r.present,
+                                                            color: cs.primary),
+                                                        _MiniBadge(
+                                                            label:
+                                                                loc.t('迟', 'L'),
+                                                            value: r.late,
+                                                            color:
+                                                                cs.tertiary),
+                                                        _MiniBadge(
+                                                            label:
+                                                                loc.t('缺', 'A'),
+                                                            value: r.absent,
+                                                            color: cs.error),
+                                                        _MiniBadge(
+                                                            label: loc.t(
+                                                                '假', 'Lv'),
+                                                            value: r.leave,
+                                                            color: cs
+                                                                .secondary),
+                                                      ],
+                                                    ),
                                                   ],
                                                 ),
                                               ),
+                                              trailing: const Icon(
+                                                  Icons.chevron_right),
                                               onTap: () {
                                                 Navigator.of(context).push(
                                                   MaterialPageRoute(
@@ -560,15 +656,61 @@ class _MiniBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 16),
         border: Border.all(color: color.withValues(alpha: 38)),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child:
-          Text('$label $value', style: Theme.of(context).textTheme.bodySmall),
+      child: Text(
+        '$label $value',
+        style: tt.labelSmall?.copyWith(fontSize: 10, height: 1.0),
+      ),
+    );
+  }
+}
+
+class _LegendChip extends StatelessWidget {
+  final Color color;
+  final String label;
+  final int value;
+
+  const _LegendChip(
+      {required this.color, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: tt.labelLarge),
+          const SizedBox(width: 8),
+          Text(
+            value.toString(),
+            style: tt.labelLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: cs.onSurface,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
