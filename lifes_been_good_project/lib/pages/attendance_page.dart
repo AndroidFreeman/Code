@@ -18,6 +18,7 @@ class AttendancePage extends StatefulWidget {
   final String? courseId;
   final String? courseName;
   final VoidCallback? onReady;
+  final bool isStandalone;
 
   const AttendancePage({
     super.key,
@@ -25,6 +26,7 @@ class AttendancePage extends StatefulWidget {
     this.courseId,
     this.courseName,
     this.onReady,
+    this.isStandalone = false,
   });
 
   @override
@@ -135,7 +137,12 @@ class _AttendancePageState extends State<AttendancePage> {
 
       if (studentsRes['ok'] == true) {
         final items = (studentsRes['data']?['items'] as List?) ?? [];
-        _allStudents = items.map((e) => Student.fromJson(e)).toList();
+        final uniqueStudents = <String, Student>{};
+        for (final e in items) {
+          final s = Student.fromJson(e);
+          uniqueStudents[s.studentNo] = s;
+        }
+        _allStudents = uniqueStudents.values.toList();
       }
 
       if (!mounted) return;
@@ -461,22 +468,46 @@ class _AttendancePageState extends State<AttendancePage> {
       ),
     );
 
+    final isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    final isPushed = widget.isStandalone;
+    final showDrawerButton = (!isDesktop || isPortrait) && !isPushed;
+
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              ScaffoldState? scaffold = Scaffold.maybeOf(context);
-              if (scaffold != null && !scaffold.hasDrawer) {
-                scaffold =
-                    scaffold.context.findAncestorStateOfType<ScaffoldState>();
-              }
-              scaffold?.openDrawer();
-            },
-          ),
-        ),
-        title: Text(loc.t('点名', 'Roll Call')),
+        titleSpacing: (showDrawerButton || isPushed) ? 0 : 16.0,
+        leadingWidth: (showDrawerButton || isPushed) ? 56.0 : 16.0,
+        leading: isPushed
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context),
+              )
+            : showDrawerButton
+                ? Builder(
+                    builder: (context) {
+                      return IconButton(
+                        icon: const Icon(Icons.menu),
+                        onPressed: () {
+                          ScaffoldState? scaffold = Scaffold.maybeOf(context);
+                          if (scaffold != null && !scaffold.hasDrawer) {
+                            scaffold = scaffold.context
+                                .findAncestorStateOfType<ScaffoldState>();
+                          }
+                          scaffold?.openDrawer();
+                        },
+                      );
+                    },
+                  )
+                : const SizedBox.shrink(),
+        title: Text(loc.t('考勤点名', 'Roll Call'),
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         centerTitle: false,
         actions: [
           if (_myClasses.isNotEmpty)
@@ -500,50 +531,49 @@ class _AttendancePageState extends State<AttendancePage> {
         ],
       ),
       body: (!_dataReady || _loading)
-          ? const SizedBox.shrink()
+          ? loader
           : CustomScrollView(
-                  key: const ValueKey('content'),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_status.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                                child:
-                                    Text(_status, style: TextStyle(color: cs.error)),
-                              ),
-                            _buildDashboardGroup(cs, tt),
-                            _buildBatchBar(cs, tt),
-                          ],
-                        ),
+              key: const ValueKey('content'),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_status.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Text(_status,
+                                style: TextStyle(color: cs.error)),
+                          ),
+                        _buildDashboardGroup(cs, tt),
+                        _buildBatchBar(cs, tt),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_displayStudents.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Text(loc.t('该班级暂无学生', 'No students in this class'),
+                          style: tt.bodyLarge),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) =>
+                            _buildStudentCard(_displayStudents[index], cs, tt),
+                        childCount: _displayStudents.length,
                       ),
                     ),
-                    if (_displayStudents.isEmpty)
-                      SliverFillRemaining(
-                        child: Center(
-                          child: Text(
-                              loc.t('该班级暂无学生', 'No students in this class'),
-                              style: tt.bodyLarge),
-                        ),
-                      )
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) =>
-                                _buildStudentCard(_displayStudents[index], cs, tt),
-                            childCount: _displayStudents.length,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+                  ),
+              ],
+            ),
     );
   }
 
@@ -593,13 +623,6 @@ class _AttendancePageState extends State<AttendancePage> {
             decoration: BoxDecoration(
               color: cs.primaryContainer,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: cs.primary.withValues(alpha: 20),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                )
-              ],
             ),
             child: Icon(Icons.schedule_rounded,
                 size: 32, color: cs.onPrimaryContainer),
@@ -709,6 +732,43 @@ class _AttendancePageState extends State<AttendancePage> {
     final mark = _marking[s.id] ?? '';
     final isMarked = mark.isNotEmpty;
     final loc = Provider.of<LocaleProvider>(context);
+    final isDesktop = MediaQuery.of(context).size.width >= 600;
+
+    Widget buildStatusButton(String value, IconData icon, String label) {
+      final isSelected = mark == value;
+      return Expanded(
+        child: FilledButton.tonal(
+          onPressed: () {
+            final newMark = isSelected ? '' : value;
+            setState(() {
+              _marking[s.id] = newMark;
+            });
+            if (newMark.isNotEmpty) {
+              _submitMark(s, newMark);
+            }
+          },
+          style: FilledButton.styleFrom(
+            backgroundColor:
+                isSelected ? cs.primary : cs.surfaceContainerHighest,
+            foregroundColor: isSelected ? cs.onPrimary : cs.onSurfaceVariant,
+            padding: EdgeInsets.symmetric(vertical: isDesktop ? 12 : 16),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: isDesktop ? 20 : 24),
+              if (isDesktop) ...[
+                const SizedBox(width: 8),
+                Text(label,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ]
+            ],
+          ),
+        ),
+      );
+    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 600),
@@ -719,15 +779,6 @@ class _AttendancePageState extends State<AttendancePage> {
             ? cs.primaryContainer.withValues(alpha: 77)
             : cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: isMarked
-            ? [
-                BoxShadow(
-                  color: cs.primary.withValues(alpha: 10),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1.5),
-                )
-              ]
-            : null,
         border: Border.all(
           color: isMarked
               ? cs.primary.withValues(alpha: 128)
@@ -791,52 +842,48 @@ class _AttendancePageState extends State<AttendancePage> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Bounceable(
-                    behavior: HitTestBehavior.deferToChild,
-                    child: SegmentedButton<String>(
-                      emptySelectionAllowed: true,
-                      showSelectedIcon: false,
-                      selected: mark.isEmpty ? {} : {mark},
-                      onSelectionChanged: (v) {
-                        final newMark = v.isNotEmpty ? v.first : '';
-                        setState(() {
-                          _marking[s.id] = newMark;
-                        });
-                        if (newMark.isNotEmpty) {
-                          _submitMark(s, newMark);
-                        }
-                      },
-                      segments: [
-                        ButtonSegment(
-                          value: 'present',
-                          label: Text(loc.t('出勤', 'Present')),
-                          icon: const Icon(Icons.check_circle_rounded),
-                        ),
-                        ButtonSegment(
-                          value: 'late',
-                          label: Text(loc.t('迟到', 'Late')),
-                          icon: const Icon(Icons.schedule_rounded),
-                        ),
-                        ButtonSegment(
-                          value: 'absent',
-                          label: Text(loc.t('缺勤', 'Absent')),
-                          icon: const Icon(Icons.cancel_rounded),
-                        ),
-                        ButtonSegment(
-                          value: 'leave',
-                          label: Text(loc.t('请假', 'Leave')),
-                          icon: const Icon(Icons.beach_access_rounded),
-                        ),
-                      ],
-                      style: SegmentedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                if (isDesktop)
+                  Row(
+                    children: [
+                      buildStatusButton('present', Icons.check_circle_rounded,
+                          loc.t('出勤', 'Present')),
+                      const SizedBox(width: 8),
+                      buildStatusButton(
+                          'late', Icons.schedule_rounded, loc.t('迟到', 'Late')),
+                      const SizedBox(width: 8),
+                      buildStatusButton('absent', Icons.cancel_rounded,
+                          loc.t('缺勤', 'Absent')),
+                      const SizedBox(width: 8),
+                      buildStatusButton('leave', Icons.beach_access_rounded,
+                          loc.t('请假', 'Leave')),
+                    ],
+                  )
+                else
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          buildStatusButton(
+                              'present',
+                              Icons.check_circle_rounded,
+                              loc.t('出勤', 'Present')),
+                          const SizedBox(width: 8),
+                          buildStatusButton('late', Icons.schedule_rounded,
+                              loc.t('迟到', 'Late')),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          buildStatusButton('absent', Icons.cancel_rounded,
+                              loc.t('缺勤', 'Absent')),
+                          const SizedBox(width: 8),
+                          buildStatusButton('leave', Icons.beach_access_rounded,
+                              loc.t('请假', 'Leave')),
+                        ],
+                      ),
+                    ],
                   ),
-                ),
               ],
             ),
           ),
