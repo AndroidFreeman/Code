@@ -491,4 +491,49 @@ class LocalProfiles {
       return null;
     }
   }
+
+  static Future<String?> ensureStudentAccountByTeacher({
+    required String dataDir,
+    required String profileId,
+    required String studentNo,
+    required String fullName,
+    required String classCode,
+    required String phone,
+  }) async {
+    await ensureSchema(dataDir);
+    final f = profilesFile(dataDir);
+    final rows = await _readRows(dataDir);
+    
+    // Check if account already exists
+    for (final r in rows) {
+      if ((r['student_no'] ?? '').trim() == studentNo) {
+        return null; // Already exists, no new password
+      }
+    }
+    
+    final defaultPwd = studentNo;
+    final passwordHash = _fnv1a64Hex(defaultPwd);
+    final now = DateTime.now().toUtc().toIso8601String().split('.').first + 'Z';
+    
+    final line = [
+      profileId,
+      'student',
+      '',
+      studentNo,
+      _safe(fullName),
+      _safe(fullName),
+      'ORG1',
+      _safe(classCode),
+      passwordHash,
+      now,
+      _safe(phone),
+      '',
+      '',
+      '',
+      '',
+    ].join(',');
+    
+    await f.writeAsString('$line\n', encoding: utf8, mode: FileMode.append);
+    return defaultPwd;
+  }
 }
