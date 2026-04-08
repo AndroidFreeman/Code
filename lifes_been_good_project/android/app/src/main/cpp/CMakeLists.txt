@@ -27,6 +27,8 @@ set(FEATURE_FILES
     todos_add.cpp
     todos_list.cpp
     todos_toggle.cpp
+    csv_op.cpp
+    json_op.cpp
 )
 
 foreach(FILE ${FEATURE_FILES})
