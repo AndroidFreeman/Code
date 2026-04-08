@@ -1,14 +1,13 @@
-import 'dart:ui';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
-import 'package:animations/animations.dart';
-
 import '../main.dart';
 import '../state/session.dart';
+import '../services/native_features.dart';
 import '../widgets/home_drawer.dart';
 import '../widgets/expressive_ui.dart';
 import 'attendance_page.dart';
@@ -66,7 +65,7 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
     _currentIndex = widget.index;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 300),
     );
     _controller.forward();
   }
@@ -90,21 +89,28 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
 
   @override
   Widget build(BuildContext context) {
-    return PageTransitionSwitcher(
-      duration: const Duration(milliseconds: 300),
-      transitionBuilder: (Widget child, Animation<double> primaryAnimation,
-          Animation<double> secondaryAnimation) {
-        return FadeThroughTransition(
-          animation: primaryAnimation,
-          secondaryAnimation: secondaryAnimation,
-          child: child,
+    return IndexedStack(
+      key: const ValueKey<String>('IndexedStack'),
+      index: _currentIndex,
+      children: widget.children.map((child) {
+        final int index = widget.children.indexOf(child);
+        final bool isSelected = index == _currentIndex;
+
+        return IgnorePointer(
+          ignoring: !isSelected,
+          child: AnimatedOpacity(
+            opacity: isSelected ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            child: AnimatedSlide(
+              offset: isSelected ? Offset.zero : const Offset(0, 0.02),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              child: child,
+            ),
+          ),
         );
-      },
-      child: IndexedStack(
-        key: ValueKey<int>(_currentIndex),
-        index: _currentIndex,
-        children: widget.children,
-      ),
+      }).toList(),
     );
   }
 }
@@ -283,287 +289,339 @@ class _DesktopShellState extends State<_DesktopShell> {
             curve: Curves.easeInOutCubic,
             width: _isExtended ? 240 : 80,
             decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.black.withValues(alpha: 204)
-                  : Colors.white.withValues(alpha: 204),
-              border: Border(
-                  right: BorderSide(color: cs.outlineVariant, width: 0.5)),
+              color: Colors.transparent,
             ),
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    // Toggle Button & Logo
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisAlignment: _isExtended
-                            ? MainAxisAlignment.spaceBetween
-                            : MainAxisAlignment.center,
-                        children: [
-                          if (_isExtended)
-                            Expanded(
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                physics: const NeverScrollableScrollPhysics(),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.check_circle_outline_rounded,
-                                        color: cs.primary),
-                                    const SizedBox(width: 8),
-                                    Text('Functions',
-                                        style: tt.titleMedium?.copyWith(
-                                            fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          IconButton(
-                            icon: Icon(
-                                _isExtended ? Icons.menu_open : Icons.menu),
-                            onPressed: () =>
-                                setState(() => _isExtended = !_isExtended),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    // Profile Section
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Bounceable(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) =>
-                                    ProfilePage(session: widget.session)),
-                          );
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(_isExtended ? 12 : 0),
-                          alignment: _isExtended
-                              ? Alignment.centerLeft
-                              : Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _isExtended
-                                ? cs.surfaceContainerHigh
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
+            child: Column(
+              children: [
+                const SizedBox(height: 16),
+                // Toggle Button & Logo
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (_isExtended)
+                        Expanded(
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             physics: const NeverScrollableScrollPhysics(),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: _isExtended ? 48 : 46,
-                                  height: _isExtended ? 48 : 46,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(
-                                        _isExtended ? 16 : 14),
-                                    border: Border.all(
-                                        color: cs.outlineVariant, width: 1),
-                                    image: widget.session.profile.avatar
-                                                .isNotEmpty &&
-                                            File(widget.session.profile.avatar)
-                                                .existsSync()
-                                        ? DecorationImage(
-                                            image: FileImage(File(
-                                                widget.session.profile.avatar)),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: (widget
-                                              .session.profile.avatar.isEmpty ||
-                                          !File(widget.session.profile.avatar)
-                                              .existsSync())
-                                      ? Text(
-                                          widget.session.profile.displayName
-                                                  .isNotEmpty
-                                              ? widget
-                                                  .session.profile.displayName
-                                                  .substring(0, 1)
-                                                  .toUpperCase()
-                                              : '?',
-                                          style: TextStyle(
-                                              color: cs.onPrimaryContainer,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 20),
-                                        )
-                                      : null,
-                                ),
-                                if (_isExtended) ...[
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        widget.session.profile.displayName,
-                                        style: tt.titleSmall?.copyWith(
-                                            fontWeight: FontWeight.bold),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        widget.session.isTeacher
-                                            ? loc.t('教师', 'Teacher')
-                                            : loc.t('学生', 'Student'),
-                                        style: tt.labelSmall?.copyWith(
-                                            color: cs.onSurfaceVariant),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                Icon(Icons.check_circle_outline_rounded,
+                                    color: cs.primary),
+                                const SizedBox(width: 8),
+                                Text('Functions',
+                                    style: tt.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
                         ),
+                      IconButton(
+                        icon: Icon(_isExtended ? Icons.menu_open : Icons.menu),
+                        onPressed: () =>
+                            setState(() => _isExtended = !_isExtended),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    // Nav Items
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: items.length,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemBuilder: (context, index) {
-                          final targetIdx = pageIds.indexOf(_targetPageId);
-                          final isSelected =
-                              (targetIdx >= 0 ? targetIdx : 0) == index;
-                          final dest = items[index].destination;
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: Bounceable(
-                              onTap: () {
-                                setState(() {
-                                  _targetPageId = items[index].id;
-                                  _mountedPageIds.add(_targetPageId);
-                                  if (_readyPageIds.contains(_targetPageId)) {
-                                    _visiblePageId = _targetPageId;
-                                  }
-                                });
-                              },
-                              child: Container(
-                                height: 56,
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Profile Section
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Bounceable(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                ProfilePage(session: widget.session)),
+                      );
+                    },
+                    child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOutCubic,
+                        padding: EdgeInsets.symmetric(
+                            vertical: _isExtended ? 12 : 0,
+                            horizontal: _isExtended ? 12 : 0),
+                        alignment: _isExtended
+                            ? Alignment.centerLeft
+                            : Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _isExtended
+                              ? cs.surfaceContainerHigh
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                margin: _isExtended
+                                    ? EdgeInsets.zero
+                                    : const EdgeInsets.symmetric(horizontal: 0),
                                 decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? cs.primaryContainer
-                                          .withValues(alpha: 128)
-                                      : Colors.transparent,
+                                  color: Colors.white,
                                   borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                      color: cs.outlineVariant, width: 1),
+                                  image: widget.session.profile.avatar
+                                              .isNotEmpty &&
+                                          File(widget.session.profile.avatar)
+                                              .existsSync()
+                                      ? DecorationImage(
+                                          image: FileImage(File(
+                                              widget.session.profile.avatar)),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
                                 ),
-                                child: Row(
-                                  children: [
-                                    // The Highlighting Line
-                                    AnimatedContainer(
-                                      duration:
-                                          const Duration(milliseconds: 300),
-                                      width: 4,
-                                      height: isSelected ? 24 : 0,
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? cs.primary
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        physics:
-                                            const NeverScrollableScrollPhysics(),
-                                        child: Row(
-                                          mainAxisAlignment: _isExtended
-                                              ? MainAxisAlignment.start
-                                              : MainAxisAlignment.center,
+                                alignment: Alignment.center,
+                                child: (widget.session.profile.avatar.isEmpty ||
+                                        !File(widget.session.profile.avatar)
+                                            .existsSync())
+                                    ? Text(
+                                        widget.session.profile.displayName
+                                                .isNotEmpty
+                                            ? widget.session.profile.displayName
+                                                .substring(0, 1)
+                                                .toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                            color: cs.onPrimaryContainer,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 20),
+                                      )
+                                    : null,
+                              ),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 140 : 0,
+                                child: ClipRect(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Opacity(
+                                      opacity: _isExtended ? 1.0 : 0.0,
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.only(left: 12),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Theme(
-                                              data: Theme.of(context).copyWith(
-                                                iconTheme: IconThemeData(
-                                                  color: isSelected
-                                                      ? cs.primary
-                                                      : cs.onSurfaceVariant,
-                                                ),
-                                              ),
-                                              child: isSelected
-                                                  ? (dest.selectedIcon ??
-                                                      dest.icon)
-                                                  : dest.icon,
+                                            Text(
+                                              widget
+                                                  .session.profile.displayName,
+                                              style: tt.titleSmall?.copyWith(
+                                                  fontWeight: FontWeight.bold),
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                            if (_isExtended) ...[
-                                              const SizedBox(width: 12),
-                                              Text(
-                                                (dest.label as Text).data ?? '',
-                                                style: tt.titleSmall?.copyWith(
-                                                  color: isSelected
-                                                      ? cs.primary
-                                                      : cs.onSurfaceVariant,
-                                                  fontWeight: isSelected
-                                                      ? FontWeight.bold
-                                                      : null,
-                                                ),
-                                              ),
-                                            ],
+                                            Text(
+                                              widget.session.isTeacher
+                                                  ? loc.t('教师', 'Teacher')
+                                                  : loc.t('学生', 'Student'),
+                                              style: tt.labelSmall?.copyWith(
+                                                  color: cs.onSurfaceVariant),
+                                            ),
                                           ],
                                         ),
                                       ),
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    // Logout
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Bounceable(
-                        onTap: widget.onLogout,
-                        child: Container(
-                          height: 56,
-                          alignment: _isExtended
-                              ? Alignment.centerLeft
-                              : Alignment.center,
-                          decoration: BoxDecoration(
-                            color: cs.errorContainer.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                if (_isExtended) const SizedBox(width: 16),
-                                Icon(Icons.logout, color: cs.error),
-                                if (_isExtended) ...[
-                                  const SizedBox(width: 12),
-                                  Text(loc.t('退出登录', 'Sign out'),
-                                      style: tt.titleSmall?.copyWith(
-                                          color: cs.error,
-                                          fontWeight: FontWeight.bold)),
-                                ],
-                              ],
-                            ),
+                            ],
                           ),
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 24),
+                // Nav Items
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: items.length,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemBuilder: (context, index) {
+                      final targetIdx = pageIds.indexOf(_targetPageId);
+                      final isSelected =
+                          (targetIdx >= 0 ? targetIdx : 0) == index;
+                      final dest = items[index].destination;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: Bounceable(
+                          onTap: () {
+                            setState(() {
+                              _targetPageId = items[index].id;
+                              _mountedPageIds.add(_targetPageId);
+                              if (_readyPageIds.contains(_targetPageId)) {
+                                _visiblePageId = _targetPageId;
+                              }
+                            });
+                          },
+                          child: Container(
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? cs.primaryContainer.withValues(alpha: 128)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              children: [
+                                // The Highlighting Line
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  width: 4,
+                                  height: isSelected ? 24 : 0,
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? cs.primary
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    child: AnimatedAlign(
+                                      duration:
+                                          const Duration(milliseconds: 300),
+                                      curve: Curves.easeInOutCubic,
+                                      alignment: _isExtended
+                                          ? Alignment.centerLeft
+                                          : Alignment.center,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Theme(
+                                            data: Theme.of(context).copyWith(
+                                              iconTheme: IconThemeData(
+                                                color: isSelected
+                                                    ? cs.primary
+                                                    : cs.onSurfaceVariant,
+                                              ),
+                                            ),
+                                            child: isSelected
+                                                ? (dest.selectedIcon ??
+                                                    dest.icon)
+                                                : dest.icon,
+                                          ),
+                                          AnimatedContainer(
+                                            duration: const Duration(
+                                                milliseconds: 300),
+                                            curve: Curves.easeInOutCubic,
+                                            width: _isExtended ? 12 : 0,
+                                          ),
+                                          AnimatedContainer(
+                                            duration: const Duration(
+                                                milliseconds: 300),
+                                            curve: Curves.easeInOutCubic,
+                                            width: _isExtended ? 140 : 0,
+                                            child: ClipRect(
+                                              child: Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: Opacity(
+                                                  opacity:
+                                                      _isExtended ? 1.0 : 0.0,
+                                                  child: Text(
+                                                    (dest.label as Text).data ??
+                                                        '',
+                                                    style:
+                                                        tt.titleSmall?.copyWith(
+                                                      color: isSelected
+                                                          ? cs.primary
+                                                          : cs.onSurfaceVariant,
+                                                      fontWeight: isSelected
+                                                          ? FontWeight.bold
+                                                          : null,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Logout
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Bounceable(
+                    onTap: widget.onLogout,
+                    child: Container(
+                      height: 56,
+                      alignment:
+                          _isExtended ? Alignment.centerLeft : Alignment.center,
+                      decoration: BoxDecoration(
+                        color: cs.errorContainer.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              width: _isExtended ? 16 : 0,
+                            ),
+                            Icon(Icons.logout, color: cs.error),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              width: _isExtended ? 12 : 0,
+                            ),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              width: _isExtended ? 140 : 0,
+                              child: ClipRect(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Opacity(
+                                    opacity: _isExtended ? 1.0 : 0.0,
+                                    child: Text(
+                                      loc.t('退出登录', 'Sign out'),
+                                      style: tt.titleSmall?.copyWith(
+                                          color: cs.error,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const VerticalDivider(thickness: 1, width: 1),
           Expanded(
             child: Container(
               color: Colors.transparent,
@@ -600,6 +658,7 @@ class _MobileShellState extends State<_MobileShell> {
   String _visiblePageId = 'timetable';
   final Set<String> _mountedPageIds = {'timetable'};
   final Set<String> _readyPageIds = {};
+  DateTime? _lastBackAt;
 
   void _onPageReady(String id) {
     if (!mounted) return;
@@ -628,45 +687,64 @@ class _MobileShellState extends State<_MobileShell> {
     if (mounted) setState(() {});
   }
 
-  File _navPrefsFile() {
-    return File(p.join(widget.session.dataDir, 'nav_prefs.json'));
-  }
-
   List<String> _defaultBottomNav() {
-    final out = <String>[];
     final loc = Provider.of<LocaleProvider>(context, listen: false);
-    final avail = _availablePageOptions(loc).map((e) => e.id).toSet();
-    void addIf(String id) {
-      if (out.length >= 3) return;
-      if (avail.contains(id) && !out.contains(id)) out.add(id);
+    final options = _availablePageOptions(loc);
+    final optionIds = options.map((e) => e.id).toList(growable: false);
+
+    final preferred = <String>[];
+    void addFirst(String id) {
+      if (!optionIds.contains(id)) return;
+      if (!preferred.contains(id)) preferred.add(id);
     }
 
-    addIf('timetable');
+    addFirst('timetable');
     if (widget.session.canViewStudents) {
-      addIf('students');
-      addIf('class_attendance');
+      addFirst('students');
+      addFirst('class_attendance');
     } else {
-      addIf('contact');
-      addIf('todo');
-      addIf('attendance');
+      addFirst('contact');
+      addFirst('todo');
+      addFirst('attendance');
+    }
+
+    final out = <String>[...preferred];
+    for (final id in optionIds) {
+      if (!out.contains(id)) out.add(id);
     }
     return out;
   }
 
   Future<void> _loadNavPrefs() async {
     try {
-      final f = _navPrefsFile();
-      if (await f.exists()) {
-        final raw = jsonDecode(await f.readAsString(encoding: utf8));
-        if (raw is Map && raw['bottom'] is List) {
-          final ids = (raw['bottom'] as List).map((e) => e.toString()).toList();
-          if (mounted) {
-            setState(() {
-              _bottomNavIds = ids;
-              _navPrefsLoaded = true;
-            });
+      final features = NativeFeatures(
+          dataDir: widget.session.dataDir,
+          nativeLibDir: widget.session.features.nativeLibDir);
+      final res = await features.jsonOp(action: 'read', file: 'nav_prefs.json');
+      if (res['ok'] == true && res['data'] != null) {
+        final raw = res['data'];
+        if (raw is Map) {
+          final loc = Provider.of<LocaleProvider>(context, listen: false);
+          final options = _availablePageOptions(loc);
+          final optionIds = options.map((e) => e.id).toList(growable: false);
+
+          final dynamic stored =
+              raw['order'] is List ? raw['order'] : raw['bottom'];
+          if (stored is List) {
+            final ids = stored.map((e) => e.toString()).toList();
+            final normalized =
+                ids.where((id) => optionIds.contains(id)).toList();
+            for (final id in optionIds) {
+              if (!normalized.contains(id)) normalized.add(id);
+            }
+            if (mounted) {
+              setState(() {
+                _bottomNavIds = normalized;
+                _navPrefsLoaded = true;
+              });
+            }
+            return;
           }
-          return;
         }
       }
     } catch (_) {}
@@ -680,12 +758,16 @@ class _MobileShellState extends State<_MobileShell> {
 
   Future<void> _saveNavPrefs(List<String> ids) async {
     try {
-      final f = _navPrefsFile();
       final payload = <String, dynamic>{
+        'order': ids.toList(),
         'bottom': ids.take(3).toList(),
         'saved_at': DateTime.now().toIso8601String(),
       };
-      await f.writeAsString(jsonEncode(payload), encoding: utf8);
+      final features = NativeFeatures(
+          dataDir: widget.session.dataDir,
+          nativeLibDir: widget.session.features.nativeLibDir);
+      await features.jsonOp(
+          action: 'write', file: 'nav_prefs.json', data: payload);
     } catch (_) {}
   }
 
@@ -710,7 +792,7 @@ class _MobileShellState extends State<_MobileShell> {
         icon: Icons.checklist_rtl_rounded
       ));
     }
-    if (widget.session.isTeacher && widget.session.canTakeAttendance) {
+    if (widget.session.canTakeAttendance) {
       out.add((
         id: 'attendance',
         label: loc.t('点名', 'Roll Call'),
@@ -732,24 +814,29 @@ class _MobileShellState extends State<_MobileShell> {
   Future<void> _openNavSettings() async {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
     final options = _availablePageOptions(loc);
+    final optionIds = options.map((e) => e.id).toList(growable: false);
     final current = (_bottomNavIds ?? _defaultBottomNav())
-        .where((id) => options.any((o) => o.id == id))
+        .where((id) => optionIds.contains(id))
         .toList();
+    final normalizedCurrent = <String>[...current];
+    for (final id in optionIds) {
+      if (!normalizedCurrent.contains(id)) normalizedCurrent.add(id);
+    }
     final res = await Navigator.of(context).push<List<String>>(
       MaterialPageRoute(
         builder: (_) => _NavSettingsPage(
           options: options,
-          initialSelected: current.take(3).toList(),
+          initialOrder: normalizedCurrent,
           onImportWakeUp: _timetableController.importWakeUp,
+          isTeacher: widget.session.isTeacher,
         ),
       ),
     );
     if (res == null) return;
-    final normalized = res
-        .where((id) => options.any((o) => o.id == id))
-        .toList()
-        .take(3)
-        .toList();
+    final normalized = res.where((id) => optionIds.contains(id)).toList();
+    for (final id in optionIds) {
+      if (!normalized.contains(id)) normalized.add(id);
+    }
     setState(() {
       _bottomNavIds = normalized;
     });
@@ -813,10 +900,10 @@ class _MobileShellState extends State<_MobileShell> {
       out.add(
         (
           destination: NavigationDestination(
-            icon: const Icon(Icons.calendar_month),
-            label: loc.t('周课表', 'Timetable'),
+            icon: const Icon(Icons.menu),
+            label: loc.t('菜单', 'Menu'),
           ),
-          id: 'timetable',
+          id: 'menu_fallback',
         ),
       );
     }
@@ -827,7 +914,19 @@ class _MobileShellState extends State<_MobileShell> {
   Widget build(BuildContext context) {
     final loc = Provider.of<LocaleProvider>(context);
     final navItems = _navItems();
-    final navIndex = navItems.indexWhere((e) => e.id == _activePageId);
+    final barItems = navItems.length == 1
+        ? [
+            navItems[0],
+            (
+              destination: NavigationDestination(
+                icon: const Icon(Icons.more_horiz),
+                label: loc.t('更多', 'More'),
+              ),
+              id: 'more',
+            ),
+          ]
+        : navItems;
+    final navIndex = barItems.indexWhere((e) => e.id == _activePageId);
 
     // Use an index of 0 if the active page is not in the NavigationBar
     // to prevent crashes, but ideally we style it so it doesn't look selected
@@ -837,6 +936,9 @@ class _MobileShellState extends State<_MobileShell> {
     // No, it throws. Let's make it 0 but we can't easily deselect all.
     // A trick is to use an IndicatorColor of transparent if navIndex is -1.
     final actualNavIndex = navIndex >= 0 ? navIndex : 0;
+    final showIndicator = navIndex >= 0 &&
+        barItems[navIndex].id != 'menu_fallback' &&
+        barItems[navIndex].id != 'more';
 
     final pageIds = _availablePageOptions(loc).map((e) => e.id).toList();
     if (!pageIds.contains(_targetPageId) && pageIds.isNotEmpty) {
@@ -857,71 +959,109 @@ class _MobileShellState extends State<_MobileShell> {
     final activeIdx = pageIds.indexOf(_visiblePageId);
     final actualActiveIdx = activeIdx >= 0 ? activeIdx : 0;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      drawerEdgeDragWidth: 100, // Make it easier to swipe from edge
-      drawer: HomeDrawer(
-        session: widget.session,
-        activePage: _activePageId,
-        hiddenPageIds: _navPrefsLoaded
-            ? _navItems().map((e) => e.id).toSet()
-            : const <String>{},
-        onNavigate: (pageId) {
-          if (pageId == 'profile') {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                  builder: (_) => ProfilePage(session: widget.session)),
-            );
-            return;
-          }
-          if (pageId == 'settings') {
-            _openNavSettings();
-            return;
-          }
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        if (_activePageId != 'timetable') {
           setState(() {
-            _activePageId = pageId;
-            _targetPageId = pageId;
+            _activePageId = 'timetable';
+            _targetPageId = 'timetable';
             _mountedPageIds.add(_targetPageId);
             if (_readyPageIds.contains(_targetPageId)) {
               _visiblePageId = _targetPageId;
             }
           });
-        },
-        onLogout: widget.onLogout,
-      ),
-      body: Builder(
-        builder: (context) {
-          return _FadeIndexedStack(
-            index: actualActiveIdx,
-            children: children,
+          return;
+        }
+        if (!Platform.isAndroid) return;
+        final now = DateTime.now();
+        final last = _lastBackAt;
+        _lastBackAt = now;
+        if (last == null || now.difference(last) > const Duration(seconds: 2)) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc.t('再按一次退出', 'Press back again to exit')),
+              duration: const Duration(seconds: 2),
+            ),
           );
-        },
-      ),
-      bottomNavigationBar: ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
-          child: NavigationBar(
-            selectedIndex: actualNavIndex,
-            indicatorShape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            indicatorColor: navIndex >= 0
-                ? Theme.of(context).colorScheme.secondaryContainer
-                : Colors.transparent,
-            onDestinationSelected: (i) {
-              setState(() {
-                _activePageId = navItems[i].id;
-                _targetPageId = navItems[i].id;
-                _mountedPageIds.add(_targetPageId);
-                if (_readyPageIds.contains(_targetPageId)) {
-                  _visiblePageId = _targetPageId;
-                }
-              });
-            },
-            destinations: navItems.map((e) => e.destination).toList(),
-            backgroundColor: Theme.of(context).brightness == Brightness.dark
-                ? Colors.black.withValues(alpha: 204)
-                : Colors.white.withValues(alpha: 204),
-          ),
+          return;
+        }
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        drawerEdgeDragWidth: 100, // Make it easier to swipe from edge
+        drawer: HomeDrawer(
+          session: widget.session,
+          activePage: _activePageId,
+          hiddenPageIds: _navPrefsLoaded
+              ? _navItems().map((e) => e.id).toSet()
+              : const <String>{},
+          onNavigate: (pageId) {
+            if (pageId == 'profile') {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => ProfilePage(session: widget.session)),
+              );
+              return;
+            }
+            if (pageId == 'settings') {
+              _openNavSettings();
+              return;
+            }
+            setState(() {
+              _activePageId = pageId;
+              _targetPageId = pageId;
+              _mountedPageIds.add(_targetPageId);
+              if (_readyPageIds.contains(_targetPageId)) {
+                _visiblePageId = _targetPageId;
+              }
+            });
+          },
+          onLogout: widget.onLogout,
+        ),
+        body: Builder(
+          builder: (context) {
+            return _FadeIndexedStack(
+              index: actualActiveIdx,
+              children: children,
+            );
+          },
+        ),
+        bottomNavigationBar: Builder(
+          builder: (context) {
+            final key = ValueKey(barItems.map((e) => e.id).join('|'));
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: NavigationBar(
+                key: key,
+                selectedIndex: actualNavIndex,
+                indicatorColor: showIndicator ? null : Colors.transparent,
+                onDestinationSelected: (i) {
+                  final id = barItems[i].id;
+                  if (id == 'menu_fallback') {
+                    Scaffold.of(context).openDrawer();
+                    return;
+                  }
+                  if (id == 'more') {
+                    _openNavSettings();
+                    return;
+                  }
+                  setState(() {
+                    _activePageId = id;
+                    _targetPageId = id;
+                    _mountedPageIds.add(_targetPageId);
+                    if (_readyPageIds.contains(_targetPageId)) {
+                      _visiblePageId = _targetPageId;
+                    }
+                  });
+                },
+                destinations: barItems.map((e) => e.destination).toList(),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -930,13 +1070,15 @@ class _MobileShellState extends State<_MobileShell> {
 
 class _NavSettingsPage extends StatefulWidget {
   final List<({String id, String label, IconData icon})> options;
-  final List<String> initialSelected;
+  final List<String> initialOrder;
   final Future<void> Function()? onImportWakeUp;
+  final bool isTeacher;
 
   const _NavSettingsPage({
     required this.options,
-    required this.initialSelected,
+    required this.initialOrder,
     required this.onImportWakeUp,
+    required this.isTeacher,
   });
 
   @override
@@ -944,12 +1086,16 @@ class _NavSettingsPage extends StatefulWidget {
 }
 
 class _NavSettingsPageState extends State<_NavSettingsPage> {
-  late List<String> _selected;
+  late List<String> _order;
 
   @override
   void initState() {
     super.initState();
-    _selected = widget.initialSelected.toList();
+    final optionIds = widget.options.map((e) => e.id).toList(growable: false);
+    _order = widget.initialOrder.where((id) => optionIds.contains(id)).toList();
+    for (final id in optionIds) {
+      if (!_order.contains(id)) _order.add(id);
+    }
   }
 
   @override
@@ -958,86 +1104,98 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
     final tt = Theme.of(context).textTheme;
     final isDesktop =
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
-
-    final selectedOpts = _selected
-        .map((id) => widget.options.where((o) => o.id == id).firstOrNull)
+    final optionsById = {
+      for (final o in widget.options) o.id: o,
+    };
+    final orderedOpts = _order
+        .map((id) => optionsById[id])
         .whereType<({String id, String label, IconData icon})>()
-        .toList(growable: false);
-
-    final remaining = widget.options
-        .where((o) => !_selected.contains(o.id))
         .toList(growable: false);
 
     final localeProvider = Provider.of<LocaleProvider>(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(localeProvider.t('设置', 'Settings')),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_selected.take(3).toList()),
-            child: Text(localeProvider.t('保存', 'Save')),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            localeProvider.t('导航栏', 'Navigation Bar'),
-            style: tt.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: cs.onSurfaceVariant,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        Navigator.of(context).pop(_order.toList());
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(localeProvider.t('设置', 'Settings')),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              localeProvider.t('导航栏', 'Navigation Bar'),
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(24),
-              border:
-                  Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(24),
+                border:
+                    Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localeProvider.t('底栏元素', 'Bottom Bar Items'),
+                    style:
+                        tt.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    localeProvider.t('拖动排序；底栏显示前 3 个，其余在 Drawer 里。',
+                        'Drag to reorder; the bottom bar shows the first 3, the rest stay in the Drawer.'),
+                    style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  localeProvider.t('底栏元素（最多 3 个）', 'Bottom Bar Items (Max 3)'),
-                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  localeProvider.t('拖动排序；未选中的功能将出现在 Drawer 里。',
-                      'Drag to reorder; unselected items will appear in the Drawer.'),
-                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (selectedOpts.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(localeProvider.t('当前未选择', 'None selected'),
-                  style: tt.bodyMedium),
-            )
-          else
+            const SizedBox(height: 16),
             ReorderableListView.builder(
+              buildDefaultDragHandles: false,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: selectedOpts.length,
+              itemCount: orderedOpts.length,
+              proxyDecorator: (child, index, animation) {
+                final id = _order[index];
+                final o = optionsById[id];
+                if (o == null) return child;
+                return Material(
+                  elevation: 6,
+                  color: cs.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(0),
+                    side: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 128)),
+                  ),
+                  child: ListTile(
+                    leading: Icon(o.icon),
+                    title: Text(o.label),
+                    trailing: const Icon(Icons.drag_indicator),
+                  ),
+                );
+              },
               onReorder: (oldIndex, newIndex) {
                 setState(() {
                   if (newIndex > oldIndex) newIndex -= 1;
-                  final id = _selected.removeAt(oldIndex);
-                  _selected.insert(newIndex, id);
+                  final id = _order.removeAt(oldIndex);
+                  _order.insert(newIndex, id);
                 });
               },
               itemBuilder: (context, index) {
-                final o = selectedOpts[index];
-                return Container(
+                final o = orderedOpts[index];
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
                   key: ValueKey(o.id),
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
@@ -1049,74 +1207,69 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                   child: ListTile(
                     leading: Icon(o.icon),
                     title: Text(o.label),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          onPressed: () {
-                            setState(() {
-                              _selected.remove(o.id);
-                            });
-                          },
-                          icon: const Icon(Icons.close_rounded),
-                          tooltip: localeProvider.t('移除', 'Remove'),
-                        ),
-                        ReorderableDragStartListener(
-                          index: index,
-                          child: const Icon(Icons.drag_handle_rounded),
-                        ),
-                      ],
+                    trailing: ReorderableDragStartListener(
+                      index: index,
+                      child: const Icon(Icons.drag_indicator),
                     ),
                   ),
                 );
               },
             ),
-          const SizedBox(height: 16),
-          Text(
-            localeProvider.t('主题与语言', 'Theme & Language'),
-            style: tt.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: cs.onSurfaceVariant,
+            const SizedBox(height: 16),
+            Text(
+              localeProvider.t('主题与语言', 'Theme & Language'),
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(24),
-              border:
-                  Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(24),
+                border:
+                    Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    title: Text(localeProvider.t('暗黑模式', 'Dark Mode')),
+                    subtitle: Text(localeProvider.t(
+                        '切换应用的颜色主题', 'Toggle application color theme')),
+                    value: localeProvider.themeMode == ThemeMode.dark,
+                    onChanged: (bool value) {
+                      localeProvider.setThemeMode(
+                          value ? ThemeMode.dark : ThemeMode.light);
+                    },
+                  ),
+                  const Divider(),
+                  SwitchListTile(
+                    title: const Text('English'),
+                    subtitle: Text(localeProvider.t(
+                        '切换应用语言', 'Toggle Application Language')),
+                    value: localeProvider.locale.languageCode == 'en',
+                    onChanged: (bool value) {
+                      localeProvider.setLocale(value
+                          ? const Locale('en', 'US')
+                          : const Locale('zh', 'CN'));
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.file_upload_outlined),
+                    title: Text(localeProvider.t(
+                        '导入 WakeUp 课程表', 'Import WakeUp Schedule')),
+                    onTap: () async {
+                      await widget.onImportWakeUp?.call();
+                    },
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SwitchListTile(
-                  title: Text(localeProvider.t('暗黑模式', 'Dark Mode')),
-                  subtitle: Text(localeProvider.t(
-                      '切换应用的颜色主题', 'Toggle application color theme')),
-                  value: localeProvider.themeMode == ThemeMode.dark,
-                  onChanged: (bool value) {
-                    localeProvider
-                        .setThemeMode(value ? ThemeMode.dark : ThemeMode.light);
-                  },
-                ),
-                const Divider(),
-                SwitchListTile(
-                  title: const Text('English'),
-                  subtitle: Text(localeProvider.t(
-                      '切换应用语言', 'Toggle Application Language')),
-                  value: localeProvider.locale.languageCode == 'en',
-                  onChanged: (bool value) {
-                    localeProvider.setLocale(value
-                        ? const Locale('en', 'US')
-                        : const Locale('zh', 'CN'));
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
