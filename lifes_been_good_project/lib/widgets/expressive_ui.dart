@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class Bounceable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
+  final GestureTapDownCallback? onTapDown;
   final VoidCallback? onLongPress;
   final double? scale;
   final HitTestBehavior behavior;
@@ -11,6 +12,7 @@ class Bounceable extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onTapDown,
     this.onLongPress,
     this.scale,
     this.behavior = HitTestBehavior.deferToChild,
@@ -52,6 +54,7 @@ class _BounceableState extends State<Bounceable>
       child: GestureDetector(
         behavior: widget.behavior,
         onTap: widget.onTap,
+        onTapDown: widget.onTapDown,
         onLongPress: widget.onLongPress,
         child: ScaleTransition(
           scale: _animation,
@@ -70,6 +73,9 @@ class ExpressiveSelector extends StatefulWidget {
   final Color? backgroundColor;
   final Color? foregroundColor;
   final String Function(String)? customLabelBuilder;
+  final EdgeInsetsGeometry? padding;
+  final TextStyle? labelTextStyle;
+  final TextStyle? valueTextStyle;
 
   const ExpressiveSelector({
     super.key,
@@ -80,6 +86,9 @@ class ExpressiveSelector extends StatefulWidget {
     this.backgroundColor,
     this.foregroundColor,
     this.customLabelBuilder,
+    this.padding,
+    this.labelTextStyle,
+    this.valueTextStyle,
   });
 
   @override
@@ -152,7 +161,8 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
             }
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: widget.padding ??
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(16),
@@ -168,11 +178,17 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
                   children: [
                     Text(
                       widget.label,
-                      style: tt.labelSmall?.copyWith(
-                        color: fg.withValues(alpha: 179),
-                        fontWeight: FontWeight.bold,
-                        height: 1.1,
-                      ),
+                      style: (widget.labelTextStyle ??
+                              tt.labelSmall?.copyWith(
+                                color: fg.withValues(alpha: 179),
+                                fontWeight: FontWeight.bold,
+                                height: 1.1,
+                              )) ??
+                          TextStyle(
+                            color: fg.withValues(alpha: 179),
+                            fontWeight: FontWeight.bold,
+                            height: 1.1,
+                          ),
                     ),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 160),
@@ -194,11 +210,17 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
                             : (widget.customLabelBuilder?.call(widget.value!) ??
                                 widget.value!),
                         key: ValueKey(widget.value ?? placeholder),
-                        style: tt.titleSmall?.copyWith(
-                          color: fg,
-                          fontWeight: FontWeight.bold,
-                          height: 1.1,
-                        ),
+                        style: (widget.valueTextStyle ??
+                                tt.titleSmall?.copyWith(
+                                  color: fg,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.1,
+                                )) ??
+                            TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.bold,
+                              height: 1.1,
+                            ),
                       ),
                     ),
                   ],
