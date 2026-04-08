@@ -27,17 +27,15 @@ class HomeDrawer extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final loc = Provider.of<LocaleProvider>(context);
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final drawerSurfaceColor =
+        isLandscape ? Theme.of(context).scaffoldBackgroundColor : cs.surface;
     bool show(String id) => !hiddenPageIds.contains(id);
 
     return Drawer(
-      backgroundColor: cs.surface,
+      backgroundColor: Colors.transparent,
       elevation: 0,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-      ),
       child: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -57,199 +55,221 @@ class HomeDrawer extends StatelessWidget {
                     ? session.profile.staffNo
                     : loc.t('未设置学号/工号', 'No ID'));
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(hp, 20, hp, 12),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.build_circle_outlined,
-                        size: 22,
-                        color: cs.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        loc.t('更多工具', 'More Tools'),
-                        style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: drawerSurfaceColor,
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(24),
+                    bottomRight: Radius.circular(24),
+                    topLeft: Radius.circular(24),
+                    bottomLeft: Radius.circular(24),
                   ),
                 ),
-                Expanded(
-                  child: ListView(
-                    padding: EdgeInsets.fromLTRB(listHp, 4, listHp, 4),
-                    children: [
-                      if (show('timetable'))
-                        _buildMenuItem(
-                          context,
-                          id: 'timetable',
-                          icon: Icons.calendar_month_rounded,
-                          label: loc.t('周课表', 'Timetable'),
-                          isSelected: activePage == 'timetable',
-                        ),
-                      if (show('todo') && session.isTeacher)
-                        _buildMenuItem(
-                          context,
-                          id: 'todo',
-                          icon: Icons.checklist_rtl_rounded,
-                          label: loc.t('待办', 'Todos'),
-                          isSelected: activePage == 'todo',
-                        ),
-                      if (show('contact'))
-                        _buildMenuItem(
-                          context,
-                          id: 'contact',
-                          icon: Icons.contact_page_rounded,
-                          label: loc.t('通讯录', 'Contacts'),
-                          isSelected: activePage == 'contact',
-                        ),
-                      if (show('attendance') &&
-                          session.isTeacher &&
-                          session.canTakeAttendance)
-                        _buildMenuItem(
-                          context,
-                          id: 'attendance',
-                          icon: Icons.emoji_people_rounded,
-                          label: loc.t('点名', 'Roll Call'),
-                          isSelected: activePage == 'attendance',
-                        ),
-                      if (show('students') && session.canViewStudents)
-                        _buildMenuItem(
-                          context,
-                          id: 'students',
-                          icon: Icons.people_alt_rounded,
-                          label: loc.t('学生', 'Students'),
-                          isSelected: activePage == 'students',
-                        ),
-                      if (show('class_attendance') && session.canViewStudents)
-                        _buildMenuItem(
-                          context,
-                          id: 'class_attendance',
-                          icon: Icons.assessment_rounded,
-                          label: loc.t('考勤', 'Attendance'),
-                          isSelected: activePage == 'class_attendance',
-                        ),
-                      _buildMenuItem(
-                        context,
-                        id: 'settings',
-                        icon: Icons.settings_rounded,
-                        label: loc.t('设置', 'Settings'),
-                        isSelected: activePage == 'settings',
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: hp),
-                  child: const Divider(height: 1),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(hp, 12, hp, 8),
-                  child: Bounceable(
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      onNavigate('profile');
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 128),
-                        ),
-                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(hp, 18, hp, 12),
                       child: Row(
                         children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: cs.primaryContainer,
-                              borderRadius: BorderRadius.circular(14),
-                              image: session.profile.avatar.isNotEmpty &&
-                                      File(session.profile.avatar).existsSync()
-                                  ? DecorationImage(
-                                      image: FileImage(
-                                        File(session.profile.avatar),
-                                      ),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            alignment: Alignment.center,
-                            child: (session.profile.avatar.isEmpty ||
-                                    !File(session.profile.avatar).existsSync())
-                                ? Text(
-                                    displayName.substring(0, 1).toUpperCase(),
-                                    style: tt.titleMedium?.copyWith(
-                                      color: cs.onPrimaryContainer,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  displayName,
-                                  style: tt.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: cs.onSurface,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  account,
-                                  style: tt.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              width: 26,
+                              height: 26,
+                              fit: BoxFit.cover,
                             ),
                           ),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            color: cs.onSurfaceVariant,
-                            size: 20,
+                          const SizedBox(width: 10),
+                          Text(
+                            loc.t('更多工具', 'More Tools'),
+                            style: tt.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurface,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(hp, 0, hp, 16),
-                  child: FilledButton.tonalIcon(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      onLogout();
-                    },
-                    icon: Icon(Icons.logout_rounded, color: cs.error),
-                    label: Text(
-                      loc.t('退出登录', 'Sign out'),
-                      style: tt.titleMedium?.copyWith(
-                        color: cs.error,
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: ListView(
+                        padding: EdgeInsets.fromLTRB(listHp, 4, listHp, 4),
+                        children: [
+                          if (show('timetable'))
+                            _buildMenuItem(
+                              context,
+                              id: 'timetable',
+                              icon: Icons.calendar_month_rounded,
+                              label: loc.t('周课表', 'Timetable'),
+                              isSelected: activePage == 'timetable',
+                            ),
+                          if (show('todo') && session.isTeacher)
+                            _buildMenuItem(
+                              context,
+                              id: 'todo',
+                              icon: Icons.checklist_rtl_rounded,
+                              label: loc.t('待办', 'Todos'),
+                              isSelected: activePage == 'todo',
+                            ),
+                          if (show('contact'))
+                            _buildMenuItem(
+                              context,
+                              id: 'contact',
+                              icon: Icons.contact_page_rounded,
+                              label: loc.t('通讯录', 'Contacts'),
+                              isSelected: activePage == 'contact',
+                            ),
+                          if (show('attendance') &&
+                              session.canTakeAttendance)
+                            _buildMenuItem(
+                              context,
+                              id: 'attendance',
+                              icon: Icons.emoji_people_rounded,
+                              label: loc.t('点名', 'Roll Call'),
+                              isSelected: activePage == 'attendance',
+                            ),
+                          if (show('students') && session.canViewStudents)
+                            _buildMenuItem(
+                              context,
+                              id: 'students',
+                              icon: Icons.people_alt_rounded,
+                              label: loc.t('学生', 'Students'),
+                              isSelected: activePage == 'students',
+                            ),
+                          if (show('class_attendance') &&
+                              session.canViewStudents)
+                            _buildMenuItem(
+                              context,
+                              id: 'class_attendance',
+                              icon: Icons.assessment_rounded,
+                              label: loc.t('考勤', 'Attendance'),
+                              isSelected: activePage == 'class_attendance',
+                            ),
+                          _buildMenuItem(
+                            context,
+                            id: 'settings',
+                            icon: Icons.settings_rounded,
+                            label: loc.t('设置', 'Settings'),
+                            isSelected: activePage == 'settings',
+                          ),
+                        ],
                       ),
                     ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: cs.errorContainer,
-                      foregroundColor: cs.error,
+                    Padding(
+                      padding: EdgeInsets.only(left: hp, right: hp, bottom: 12),
+                      child: Bounceable(
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          Timer(const Duration(milliseconds: 220), () {
+                            onNavigate('profile');
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: cs.outlineVariant.withValues(alpha: 128),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  borderRadius: BorderRadius.circular(14),
+                                  image: session.profile.avatar.isNotEmpty &&
+                                          File(session.profile.avatar)
+                                              .existsSync()
+                                      ? DecorationImage(
+                                          image: FileImage(
+                                            File(session.profile.avatar),
+                                          ),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                ),
+                                alignment: Alignment.center,
+                                child: (session.profile.avatar.isEmpty ||
+                                        !File(session.profile.avatar)
+                                            .existsSync())
+                                    ? Text(
+                                        displayName
+                                            .substring(0, 1)
+                                            .toUpperCase(),
+                                        style: tt.titleMedium?.copyWith(
+                                          color: cs.onPrimaryContainer,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      displayName,
+                                      style: tt.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: cs.onSurface,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      account,
+                                      style: tt.bodySmall?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                color: cs.onSurfaceVariant,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(hp, 0, hp, 16),
+                      child: FilledButton.tonalIcon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          Timer(const Duration(milliseconds: 220), () {
+                            onLogout();
+                          });
+                        },
+                        icon: Icon(Icons.logout_rounded, color: cs.error),
+                        label: Text(
+                          loc.t('退出登录', 'Sign out'),
+                          style: tt.titleMedium?.copyWith(
+                            color: cs.error,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.errorContainer,
+                          foregroundColor: cs.error,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             );
           },
         ),
@@ -288,7 +308,7 @@ class HomeDrawer extends StatelessWidget {
           child: InkWell(
             onTap: () {
               Navigator.of(context).pop();
-              Future.microtask(() {
+              Timer(const Duration(milliseconds: 220), () {
                 onNavigate(id);
               });
             },
