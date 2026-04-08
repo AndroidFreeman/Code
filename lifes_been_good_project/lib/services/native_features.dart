@@ -374,6 +374,72 @@ class NativeFeatures {
     return _decode(res);
   }
 
+  Future<Map<String, dynamic>> csvOp({
+    required String action,
+    required String file,
+    List<String>? headers,
+    List<Map<String, dynamic>>? rows,
+  }) async {
+    final exePath = _featurePath('csv_op');
+    final exists = await File(exePath).exists();
+    if (!exists) {
+      return {
+        'ok': false,
+        'error': {
+          'code': 'missing_binary',
+          'message': '未找到二进制：$exePath',
+        },
+      };
+    }
+
+    final payload = <String, dynamic>{
+      'action': action,
+      'file': file,
+    };
+    if (headers != null) payload['headers'] = headers;
+    if (rows != null) payload['rows'] = rows;
+
+    final res = await Process.run(
+      exePath,
+      [dataDir, jsonEncode(payload)],
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> jsonOp({
+    required String action,
+    required String file,
+    dynamic data,
+  }) async {
+    final exePath = _featurePath('json_op');
+    final exists = await File(exePath).exists();
+    if (!exists) {
+      return {
+        'ok': false,
+        'error': {
+          'code': 'missing_binary',
+          'message': '未找到二进制：$exePath',
+        },
+      };
+    }
+
+    final payload = <String, dynamic>{
+      'action': action,
+      'file': file,
+    };
+    if (data != null) payload['data'] = data;
+
+    final res = await Process.run(
+      exePath,
+      [dataDir, jsonEncode(payload)],
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    );
+    return _decode(res);
+  }
+
   Map<String, dynamic> _decode(ProcessResult res) {
     final stdoutStr = (res.stdout is String)
         ? (res.stdout as String)
