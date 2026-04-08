@@ -120,6 +120,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     final loc = Provider.of<LocaleProvider>(context);
 
     return Scaffold(
