@@ -48,49 +48,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     return s;
   }
 
-  List<String> _splitCsvLine(String line) {
-    final res = <String>[];
-    var current = StringBuffer();
-    var inQuotes = false;
-    for (var i = 0; i < line.length; i++) {
-      final char = line[i];
-      if (char == '"') {
-        inQuotes = !inQuotes;
-      } else if (char == ',' && !inQuotes) {
-        res.add(current.toString().trim());
-        current = StringBuffer();
-      } else {
-        current.write(char);
-      }
-    }
-    res.add(current.toString().trim());
-    if (res.isNotEmpty && res.first.startsWith('\uFEFF')) {
-      res[0] = res.first.replaceFirst('\uFEFF', '');
-    }
-    return res;
-  }
-
-  Future<List<Map<String, String>>> _readCsvRows(File f) async {
-    if (!await f.exists()) return const [];
-    final content = await f.readAsString(encoding: utf8);
-    final lines = const LineSplitter()
-        .convert(content)
-        .where((e) => e.trim().isNotEmpty)
-        .toList();
-    if (lines.length <= 1) return const [];
-    final headers = _splitCsvLine(lines.first);
-    final rows = <Map<String, String>>[];
-    for (var i = 1; i < lines.length; i++) {
-      final parts = _splitCsvLine(lines[i]);
-      final row = <String, String>{};
-      for (var j = 0; j < headers.length && j < parts.length; j++) {
-        row[headers[j]] = parts[j];
-      }
-      rows.add(row);
-    }
-    return rows;
-  }
-
   Future<void> _refresh() async {
     setState(() {
       _loading = true;
@@ -99,9 +56,12 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
 
     try {
       // Reload student data from CSV to get latest role/position
-      final f = File(p.join(widget.session.dataDir, 'students.csv'));
-      if (await f.exists()) {
-        final rows = await _readCsvRows(f);
+      final res = await widget.session.features
+          .csvOp(action: 'read', file: 'students.csv');
+      if (res['ok'] == true) {
+        final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
+        final rows =
+            items.map((e) => (e as Map).cast<String, String>()).toList();
         final current = rows.where((r) => r['id'] == _student.id).firstOrNull;
         if (current != null) {
           setState(() {
@@ -134,12 +94,19 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         }
       }
 
-      final sessionsFile =
-          File(p.join(widget.session.dataDir, 'attendance_sessions.csv'));
-      final recordsFile =
-          File(p.join(widget.session.dataDir, 'attendance_records.csv'));
-      final sessions = await _readCsvRows(sessionsFile);
-      final records = await _readCsvRows(recordsFile);
+      final sessRes = await widget.session.features
+          .csvOp(action: 'read', file: 'attendance_sessions.csv');
+      final recRes = await widget.session.features
+          .csvOp(action: 'read', file: 'attendance_records.csv');
+
+      final sessions =
+          (((sessRes['data'] ?? const {})['items'] as List?) ?? const [])
+              .map((e) => (e as Map).cast<String, String>())
+              .toList();
+      final records =
+          (((recRes['data'] ?? const {})['items'] as List?) ?? const [])
+              .map((e) => (e as Map).cast<String, String>())
+              .toList();
 
       final sessionsById = <String, Map<String, String>>{};
       for (final s in sessions) {
@@ -217,6 +184,17 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
+            final cs = Theme.of(ctx).colorScheme;
+            final inputTheme = InputDecoration(
+              filled: true,
+              fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide.none,
+              ),
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+            );
+
             return AlertDialog(
               title: Text(loc.t('编辑学生信息', 'Edit Student Info')),
               content: SizedBox(
@@ -227,28 +205,32 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                     children: [
                       TextField(
                         controller: noCtrl,
-                        decoration: InputDecoration(
-                          labelText: loc.t('学号', 'Student ID'),
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: inputTheme.copyWith(
+                            labelText: loc.t('学号', 'Student ID')),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: nameCtrl,
-                        decoration: InputDecoration(
-                          labelText: loc.t('姓名', 'Name'),
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration:
+                            inputTheme.copyWith(labelText: loc.t('姓名', 'Name')),
                       ),
                       const SizedBox(height: 12),
-                      DropdownMenu<String>(
-                        label: Text(loc.t('班级', 'Class')),
-                        initialSelection: selectedClass,
-                        expandedInsets: EdgeInsets.zero,
-                        dropdownMenuEntries: allClasses
-                            .map((c) => DropdownMenuEntry(value: c, label: c))
-                            .toList(),
-                        onSelected: (v) {
+                      DropdownButtonFormField<String>(
+                        value: (allClasses.contains(selectedClass) ||
+                                selectedClass.isEmpty)
+                            ? selectedClass
+                            : null,
+                        decoration: inputTheme.copyWith(
+                            labelText: loc.t('班级', 'Class')),
+                        items: [
+                          DropdownMenuItem(
+                            value: '',
+                            child: Text(loc.t('（不指定）', '(Not specified)')),
+                          ),
+                          ...allClasses.map(
+                              (c) => DropdownMenuItem(value: c, child: Text(c)))
+                        ],
+                        onChanged: (v) {
                           setLocal(() {
                             selectedClass = v ?? '';
                           });
@@ -257,26 +239,26 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: phoneCtrl,
-                        decoration: InputDecoration(
-                          labelText: loc.t('电话', 'Phone'),
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: inputTheme.copyWith(
+                            labelText: loc.t('电话', 'Phone')),
                       ),
                       const SizedBox(height: 12),
                       if (widget.session.isTeacher)
-                        DropdownMenu<String>(
-                          label: Text(loc.t('职位', 'Position')),
-                          initialSelection: pos,
-                          expandedInsets: EdgeInsets.zero,
-                          dropdownMenuEntries: [
-                            DropdownMenuEntry(
-                                value: '',
-                                label: loc.t('普通学生', 'Regular Student')),
-                            DropdownMenuEntry(
-                                value: 'cadre',
-                                label: loc.t('班干部', 'Class Cadre')),
+                        DropdownButtonFormField<String>(
+                          value: pos.isEmpty ? '' : pos,
+                          decoration: inputTheme.copyWith(
+                              labelText: loc.t('职位', 'Position')),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(loc.t('普通学生', 'Regular Student')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'cadre',
+                              child: Text(loc.t('班干部', 'Class Cadre')),
+                            ),
                           ],
-                          onSelected: (v) {
+                          onChanged: (v) {
                             setLocal(() {
                               pos = v ?? '';
                             });
@@ -330,21 +312,20 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     });
 
     try {
-      final f = File(p.join(widget.session.dataDir, 'students.csv'));
-      if (!await f.exists()) throw loc.t('文件不存在', 'File not found');
+      final res = await widget.session.features
+          .csvOp(action: 'read', file: 'students.csv');
+      if (res['ok'] != true) throw loc.t('文件读取失败', 'Failed to read file');
 
-      final content = await f.readAsString(encoding: utf8);
-      final lines = const LineSplitter()
-          .convert(content)
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-      if (lines.isEmpty) throw loc.t('文件格式错误', 'Invalid file format');
+      final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
+      final rows =
+          items.map((e) => (e as Map).cast<String, dynamic>()).toList();
 
-      final headers = lines.first.split(',');
-      final rows = await _readCsvRows(f);
+      if (rows.isEmpty) throw loc.t('文件格式错误', 'Invalid file format');
+
+      final headers = rows.first.keys.toList();
 
       for (final r in rows) {
-        if ((r['id'] ?? '').trim() == _student.id) {
+        if ((r['id'] ?? '').toString().trim() == _student.id) {
           r['student_no'] = newNo.replaceAll(',', '');
           r['full_name'] = newName.replaceAll(',', '');
           r['class_code'] = newClass.replaceAll(',', '');
@@ -354,11 +335,12 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         }
       }
 
-      final out = <String>[headers.join(',')];
-      for (final r in rows) {
-        out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
-      }
-      await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+      await widget.session.features.csvOp(
+        action: 'write',
+        file: 'students.csv',
+        headers: headers,
+        rows: rows,
+      );
 
       await _refresh();
     } catch (e) {
@@ -383,6 +365,92 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       default:
         return s;
     }
+  }
+
+  Future<void> _updateRecentRecordStatus(
+      {required String sessionId, required String status}) async {
+    if (sessionId.trim().isEmpty) return;
+    try {
+      await widget.session.features.markAttendanceRecord(
+        sessionId: sessionId,
+        studentId: _student.id,
+        status: status,
+        markedByProfileId: widget.session.profile.id,
+      );
+      await _refresh();
+    } catch (_) {}
+  }
+
+  void _openRecentRecordStatusPicker(
+      BuildContext context, Map<String, String> r) {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    final cs = Theme.of(context).colorScheme;
+    final sessionId = (r['session_id'] ?? '').trim();
+    final current = (r['status'] ?? '').trim();
+    final options = <({String id, String label, IconData icon, Color color})>[
+      (
+        id: 'present',
+        label: loc.t('出勤', 'Present'),
+        icon: Icons.check_circle_rounded,
+        color: cs.primary
+      ),
+      (
+        id: 'late',
+        label: loc.t('迟到', 'Late'),
+        icon: Icons.access_time_filled_rounded,
+        color: cs.tertiary
+      ),
+      (
+        id: 'absent',
+        label: loc.t('缺勤', 'Absent'),
+        icon: Icons.cancel_rounded,
+        color: cs.error
+      ),
+      (
+        id: 'leave',
+        label: loc.t('请假', 'Leave'),
+        icon: Icons.beach_access_rounded,
+        color: cs.secondary
+      ),
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        return ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                loc.t('更改考勤状态', 'Change Attendance Status'),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ...options.map((o) {
+              final selected = o.id == current;
+              return ListTile(
+                leading: Icon(o.icon, color: o.color),
+                title: Text(o.label),
+                trailing: selected
+                    ? Icon(Icons.check_rounded, color: cs.primary)
+                    : null,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _updateRecentRecordStatus(sessionId: sessionId, status: o.id);
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -448,13 +516,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                         decoration: BoxDecoration(
                           color: cs.surface,
                           borderRadius: BorderRadius.circular(32),
-                          boxShadow: [
-                            BoxShadow(
-                              color: cs.shadow.withOpacity(0.04),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
-                            )
-                          ],
                         ),
                         child: Row(
                           children: [
@@ -486,7 +547,9 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    s.studentNo,
+                                    s.classCode.isNotEmpty
+                                        ? '${s.studentNo} · ${s.classCode}'
+                                        : s.studentNo,
                                     style: tt.titleMedium
                                         ?.copyWith(color: cs.onSurfaceVariant),
                                   ),
@@ -494,11 +557,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                   Wrap(
                                     spacing: 8,
                                     children: [
-                                      _buildBadge(
-                                          context,
-                                          s.classCode,
-                                          cs.secondaryContainer,
-                                          cs.onSecondaryContainer),
                                       if (s.position.isNotEmpty)
                                         _buildBadge(
                                             context,
@@ -592,55 +650,65 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                             Color statusColor = cs.primary;
                             if (status == 'late') statusColor = cs.tertiary;
                             if (status == 'absent') statusColor = cs.error;
+                            if (status == 'leave') statusColor = cs.secondary;
 
-                            return Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: cs.surface,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                    color: cs.outlineVariant.withOpacity(0.5)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: statusColor.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
+                            return Bounceable(
+                              onTap: () =>
+                                  _openRecentRecordStatusPicker(context, r),
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: cs.surface,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color:
+                                          cs.outlineVariant.withOpacity(0.5)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: statusColor.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Icon(
+                                        status == 'present'
+                                            ? Icons.check_circle_rounded
+                                            : status == 'late'
+                                                ? Icons
+                                                    .access_time_filled_rounded
+                                                : status == 'leave'
+                                                    ? Icons.beach_access_rounded
+                                                    : Icons.cancel_rounded,
+                                        color: statusColor,
+                                        size: 24,
+                                      ),
                                     ),
-                                    child: Icon(
-                                      status == 'present'
-                                          ? Icons.check_circle_rounded
-                                          : status == 'late'
-                                              ? Icons.access_time_filled_rounded
-                                              : Icons.cancel_rounded,
-                                      color: statusColor,
-                                      size: 24,
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(title,
+                                              style: tt.titleMedium?.copyWith(
+                                                  fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                              markedAt.isEmpty ? '—' : markedAt,
+                                              style: tt.bodySmall?.copyWith(
+                                                  color: cs.onSurfaceVariant)),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(title,
-                                            style: tt.titleMedium?.copyWith(
-                                                fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 2),
-                                        Text(markedAt.isEmpty ? '—' : markedAt,
-                                            style: tt.bodySmall?.copyWith(
-                                                color: cs.onSurfaceVariant)),
-                                      ],
-                                    ),
-                                  ),
-                                  _buildBadge(
-                                      context,
-                                      _statusLabel(status, loc),
-                                      statusColor.withOpacity(0.1),
-                                      statusColor),
-                                ],
+                                    _buildBadge(
+                                        context,
+                                        _statusLabel(status, loc),
+                                        statusColor.withOpacity(0.1),
+                                        statusColor),
+                                  ],
+                                ),
                               ),
                             );
                           },
