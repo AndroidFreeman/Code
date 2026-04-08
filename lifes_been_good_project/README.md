@@ -1,42 +1,48 @@
-## flutter_app
-Flutter 前端原型（Windows/Linux/Android 目标）。Windows/Linux 通过 `Process.run` 调用本地二进制完成数据读写与处理。
+# Life's Been Good
 
-### 你需要准备
-- Flutter SDK
-- 对应平台的构建环境（Windows: Visual Studio；Linux: 工具链；Android: Android SDK）
-- 编译好的 `campus_cli` 二进制
+A local-first Flutter application for managing campus life, courses, students, and schedules, designed with a frontend-backend separation architecture using native C++ executables for all file processing.
 
-### 二进制放置位置
-App 启动后会创建数据目录：application support 下的 `campus_data/`。
+## Architecture
 
-请把 `campus_cli` 放到：
-- Windows：`<campus_data>/bin/campus_cli.exe`
-- Linux/Android：`<campus_data>/bin/campus_cli`
+This project adopts a unique **frontend-backend separation** pattern in a local-first environment:
+- **Frontend**: Flutter (Dart) handles UI, state management, and user interactions.
+- **Backend**: Native C++ executables (located in `native/features/`) act as local microservices.
+- **Communication**: Dart uses `Process.run()` passing JSON payloads to the C++ binaries, which perform file I/O (CSV/JSON) and return JSON responses.
 
-如果你采用“一个功能一个 C 文件、一个可执行文件”的方式（见 `native/features/`），把对应二进制也放到同一个目录，例如：
-- Windows：`<campus_data>/bin/students_delete.exe`
-- Linux：`<campus_data>/bin/students_delete`
+### Key Components
 
-当前 Flutter 会优先查找并调用这些二进制（不存在时才回退到 `campus_cli`）：
-- `system_init`
-- `profiles_list`
-- `courses_list`
-- `timetable_list`
-- `contacts_list`
-- `todos_list` / `todos_add` / `todos_toggle`
-- `students_list` / `students_insert` / `students_delete`
-- `attendance_session_start` / `attendance_record_mark`
+- **Dart Side**: `lib/services/native_features.dart` abstracts the interaction with the C++ binaries (`csv_op.exe`, `json_op.exe`, etc.).
+- **Native Side**: `native/features/` contains the C++ code (`csv_op.cpp`, `json_op.cpp`, etc.). These are compiled into independent executables.
 
-首次进入登录页后，点“初始化示例数据”会在 `campus_data/` 下创建并填充 CSV。
+## Features
 
-### 运行
-在你自己的 Flutter 工程中，复制本目录的 `lib/` 与 `pubspec.yaml` 依赖（`path_provider`、`path`）。
+- **Teacher & Student Roles**: Different permissions and views based on login role.
+- **Class & Student Management**: Teachers can add classes, manage students, and assign roles (e.g., class cadre).
+  - Default student passwords are automatically generated (last 6 digits of Student ID, padded with 0).
+- **Course & Timetable Management**: Create courses, manage enrollments, and schedule classes.
+- **Attendance Tracking**: Start attendance sessions and mark records.
+- **To-Do & Contacts**: Manage personal tasks and a campus address book.
 
-常用命令：
-- `flutter pub get`
-- `flutter run -d windows`
-- `flutter run -d linux`
-- `flutter run -d android`
+## Building and Running
 
-### Android 说明
-Android 上直接执行外部二进制通常不可行（应用私有目录可能无执行权限、也不建议随意 `exec`）。如果你必须复用同一套 C 逻辑，建议把这些 C 文件通过 NDK 编译成 `lib*.so`，再用 `dart:ffi` 调用（仍然可以保持“一个功能一个 C 文件”，只是不再以 `main()` 作为入口）。
+### Prerequisites
+- Flutter SDK (latest stable)
+- C++17 Compiler (GCC/MinGW-w64 on Windows, GCC on Linux, Clang on macOS)
+
+### Compile Native Backend
+Run the build script in the `native/features` directory to compile all C++ features:
+```powershell
+cd native/features
+./build.ps1
+```
+*(On Linux/macOS, use `build.sh`)*
+
+The compiled binaries will be placed in `native/features/dist/` and automatically synced to the app's internal bin directory by the Dart bootstrapper.
+
+### Run Flutter App
+```bash
+flutter run -d windows
+```
+
+## Data Storage
+All data is stored locally in CSV and JSON files within the application's document directory (e.g., `%APPDATA%\lifes_been_good` on Windows). The C++ backend ensures reliable parsing and updating of these files.
