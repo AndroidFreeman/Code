@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -32,8 +33,13 @@ class _TodosPageState extends State<TodosPage> {
   @override
   void initState() {
     super.initState();
-    _store = TodosStore(dataDir: widget.session.dataDir);
-    _foldersStore = TodoFoldersStore(dataDir: widget.session.dataDir);
+    _store = TodosStore(
+      dataDir: widget.session.dataDir,
+    );
+    _foldersStore = TodoFoldersStore(
+      dataDir: widget.session.dataDir,
+      nativeLibDir: widget.session.features.nativeLibDir,
+    );
     _refresh();
   }
 
@@ -260,22 +266,40 @@ class _TodosPageState extends State<TodosPage> {
             ? _items
             : _items.where((e) => e.folder == _activeFolder).toList();
 
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    final showDrawerButton = !isDesktop || isPortrait;
+
     return Scaffold(
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              ScaffoldState? scaffold = Scaffold.maybeOf(context);
-              if (scaffold != null && !scaffold.hasDrawer) {
-                scaffold =
-                    scaffold.context.findAncestorStateOfType<ScaffoldState>();
-              }
-              scaffold?.openDrawer();
-            },
-          ),
-        ),
-        title: Text(loc.t('待办', 'Todos')),
+        title: Text(loc.t('待办事项', 'Todos'),
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
+        leadingWidth: showDrawerButton ? 56.0 : 16.0,
+        leading: showDrawerButton
+            ? Builder(
+                builder: (context) {
+                  return IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () {
+                      ScaffoldState? scaffold = Scaffold.maybeOf(context);
+                      if (scaffold != null && !scaffold.hasDrawer) {
+                        scaffold = scaffold.context
+                            .findAncestorStateOfType<ScaffoldState>();
+                      }
+                      scaffold?.openDrawer();
+                    },
+                  );
+                },
+              )
+            : const SizedBox.shrink(),
         centerTitle: false,
         actions: [
           Padding(
@@ -375,8 +399,12 @@ class _TodosPageState extends State<TodosPage> {
                         enabled: !_loading,
                         decoration: InputDecoration(
                           hintText: loc.t('输入待办内容…', 'Input todo content...'),
-                          border: const OutlineInputBorder(),
                           isDense: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
                         ),
                         onSubmitted: (_) => _add(),
                       ),
@@ -436,19 +464,23 @@ class _TodosPageState extends State<TodosPage> {
                                       final ok = await showDialog<bool>(
                                         context: context,
                                         builder: (ctx) => AlertDialog(
-                                          title: Text(loc.t('删除待办', 'Delete Todo')),
-                                          content: Text(loc.t('确认删除“${item.title}”？',
+                                          title: Text(
+                                              loc.t('删除待办', 'Delete Todo')),
+                                          content: Text(loc.t(
+                                              '确认删除“${item.title}”？',
                                               'Delete “${item.title}”?')),
                                           actions: [
                                             TextButton(
                                               onPressed: () =>
                                                   Navigator.of(ctx).pop(false),
-                                              child: Text(loc.t('取消', 'Cancel')),
+                                              child:
+                                                  Text(loc.t('取消', 'Cancel')),
                                             ),
                                             FilledButton(
                                               onPressed: () =>
                                                   Navigator.of(ctx).pop(true),
-                                              child: Text(loc.t('删除', 'Delete')),
+                                              child:
+                                                  Text(loc.t('删除', 'Delete')),
                                             ),
                                           ],
                                         ),
@@ -505,7 +537,8 @@ class _TodosPageState extends State<TodosPage> {
                                                     style: tt.bodySmall)
                                                 : null)
                                             : Text(
-                                                loc.t('截止：${item.dueAt}', 'Due: ${item.dueAt}'),
+                                                loc.t('截止：${item.dueAt}',
+                                                    'Due: ${item.dueAt}'),
                                               ),
                                         trailing: PopupMenuButton<String>(
                                           icon: const Icon(Icons.more_vert),
@@ -514,21 +547,25 @@ class _TodosPageState extends State<TodosPage> {
                                               final ok = await showDialog<bool>(
                                                 context: context,
                                                 builder: (ctx) => AlertDialog(
-                                                  title: Text(loc.t('删除待办', 'Delete Todo')),
-                                                  content: Text(loc.t('确认删除“${item.title}”？',
+                                                  title: Text(loc.t(
+                                                      '删除待办', 'Delete Todo')),
+                                                  content: Text(loc.t(
+                                                      '确认删除“${item.title}”？',
                                                       'Delete “${item.title}”?')),
                                                   actions: [
                                                     TextButton(
                                                       onPressed: () =>
                                                           Navigator.of(ctx)
                                                               .pop(false),
-                                                      child: Text(loc.t('取消', 'Cancel')),
+                                                      child: Text(loc.t(
+                                                          '取消', 'Cancel')),
                                                     ),
                                                     FilledButton(
                                                       onPressed: () =>
                                                           Navigator.of(ctx)
                                                               .pop(true),
-                                                      child: Text(loc.t('删除', 'Delete')),
+                                                      child: Text(loc.t(
+                                                          '删除', 'Delete')),
                                                     ),
                                                   ],
                                                 ),
