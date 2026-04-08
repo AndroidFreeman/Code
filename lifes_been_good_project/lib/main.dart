@@ -15,6 +15,7 @@ import 'pages/bootstrap_page.dart';
 import 'pages/login_page.dart';
 import 'pages/shell_page.dart';
 import 'services/app_paths.dart';
+import 'services/android_native_installer.dart';
 import 'services/bootstrapper.dart';
 import 'services/local_profiles.dart';
 import 'services/native_cli.dart';
@@ -24,10 +25,12 @@ import 'state/session.dart';
 class LocaleProvider extends ChangeNotifier {
   Locale _locale = const Locale('zh', 'CN');
   ThemeMode _themeMode = ThemeMode.light;
+  bool _enableQuickRollCall = true;
 
   Locale get locale => _locale;
   ThemeMode get themeMode => _themeMode;
   bool get isEnglish => _locale.languageCode == 'en';
+  bool get enableQuickRollCall => _enableQuickRollCall;
 
   static const _settingsFileName = 'app_settings.json';
 
@@ -37,17 +40,24 @@ class LocaleProvider extends ChangeNotifier {
     return input;
   }
 
-  Future<File> _settingsFile() async {
-    final dataDir = await AppPaths.dataDir();
-    return File(p.join(dataDir.path, _settingsFileName));
-  }
-
   Future<void> load() async {
     try {
-      final f = await _settingsFile();
-      if (!await f.exists()) return;
-      final decoded = jsonDecode(await f.readAsString(encoding: utf8));
+      final dataDir = await AppPaths.dataDir();
+      final nativeLibDir = Platform.isAndroid
+          ? await AndroidNativeInstaller.getNativeLibraryDir()
+          : null;
+      final features =
+          NativeFeatures(dataDir: dataDir.path, nativeLibDir: nativeLibDir);
+      final res =
+          await features.jsonOp(action: 'read', file: _settingsFileName);
+      if (res['ok'] != true || res['data'] == null) return;
+      final decoded = res['data'];
       if (decoded is! Map) return;
+
+      if (decoded.containsKey('enableQuickRollCall')) {
+        _enableQuickRollCall = decoded['enableQuickRollCall'] == true;
+      }
+
       final rawLocale = decoded['locale']?.toString().trim();
       if (rawLocale == null || rawLocale.isEmpty) return;
       final parts = rawLocale.replaceAll('-', '_').split('_');
@@ -61,16 +71,29 @@ class LocaleProvider extends ChangeNotifier {
 
   Future<void> _save() async {
     try {
-      final f = await _settingsFile();
+      final dataDir = await AppPaths.dataDir();
+      final nativeLibDir = Platform.isAndroid
+          ? await AndroidNativeInstaller.getNativeLibraryDir()
+          : null;
+      final features =
+          NativeFeatures(dataDir: dataDir.path, nativeLibDir: nativeLibDir);
       final payload = <String, dynamic>{
         'locale': _locale.toLanguageTag(),
+        'enableQuickRollCall': _enableQuickRollCall,
       };
-      await f.writeAsString(jsonEncode(payload), encoding: utf8);
+      await features.jsonOp(
+          action: 'write', file: _settingsFileName, data: payload);
     } catch (_) {}
   }
 
   void setLocale(Locale newLocale) {
     _locale = _normalizeLocale(newLocale);
+    notifyListeners();
+    unawaited(_save());
+  }
+
+  void setEnableQuickRollCall(bool value) {
+    _enableQuickRollCall = value;
     notifyListeners();
     unawaited(_save());
   }
@@ -108,13 +131,15 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
   Session? _session;
   BootstrapResult? _boot;
   bool _autoLoginTried = false;
+  SystemUiOverlayStyle? _appliedOverlayStyle;
 
   Future<void> _tryAutoLogin(BootstrapResult boot) async {
     if (_autoLoginTried) return;
     _autoLoginTried = true;
     try {
-      final profile =
-          await LocalProfiles.loadAutoLoginProfile(dataDir: boot.dataDir);
+      final profile = await LocalProfiles.loadAutoLoginProfile(
+        dataDir: boot.dataDir,
+      );
       if (profile == null) return;
 
       final position = await LocalProfiles.loadStudentPosition(
@@ -151,6 +176,32 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
     final localeProvider = Provider.of<LocaleProvider>(context);
     final isEn = localeProvider.isEnglish;
     final fontFamily = isEn ? 'Fredoka' : 'NotoSansSC';
+    final platformBrightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final effectiveBrightness = localeProvider.themeMode == ThemeMode.system
+        ? platformBrightness
+        : (localeProvider.themeMode == ThemeMode.dark
+            ? Brightness.dark
+            : Brightness.light);
+    final overlayStyle = effectiveBrightness == Brightness.dark
+        ? const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
+          )
+        : const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
+          );
+    if (_appliedOverlayStyle != overlayStyle) {
+      _appliedOverlayStyle = overlayStyle;
+      SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+    }
 
     final baseTheme = ThemeData(
       colorScheme: ColorScheme.fromSeed(
@@ -183,21 +234,23 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
     const expressiveRadius = 24.0;
     const extraExpressiveRadius = 32.0;
 
-    return MaterialApp(
-      title: "Life's Been Good System",
-      debugShowCheckedModeBanner: false,
-      locale: localeProvider.locale,
-      themeMode: localeProvider.themeMode,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
-      theme: baseTheme.copyWith(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: MaterialApp(
+        title: "Life's Been Good System",
+        debugShowCheckedModeBanner: false,
+        locale: localeProvider.locale,
+        themeMode: localeProvider.themeMode,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
+        theme: baseTheme.copyWith(
         textTheme: baseTheme.textTheme.apply(
           bodyColor: const Color(0xFF1C1B1F),
           displayColor: const Color(0xFF1C1B1F),
@@ -207,9 +260,16 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
-          backgroundColor: Colors.white.withValues(alpha: 204),
+          backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           foregroundColor: baseTheme.colorScheme.onSurface,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
+          ),
         ),
         cardTheme: CardThemeData(
           elevation: 0,
@@ -224,7 +284,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
         navigationBarTheme: NavigationBarThemeData(
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           elevation: 0,
-          backgroundColor: Colors.white.withValues(alpha: 204),
+          backgroundColor: Colors.transparent,
           indicatorColor: baseTheme.colorScheme.secondaryContainer,
           indicatorShape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(expressiveRadius),
@@ -245,9 +305,9 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           ),
         ),
         floatingActionButtonTheme: FloatingActionButtonThemeData(
-          elevation: 1,
-          hoverElevation: 2,
-          focusElevation: 2,
+          elevation: 0,
+          hoverElevation: 0,
+          focusElevation: 0,
           backgroundColor: baseTheme.colorScheme.primaryContainer,
           foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
           splashColor: baseTheme.colorScheme.primary.withValues(alpha: 26),
@@ -320,10 +380,10 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            elevation: 1,
+            elevation: 0,
             backgroundColor: baseTheme.colorScheme.primaryContainer,
             foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
-            shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 38),
+            shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 20),
             surfaceTintColor: Colors.transparent,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           ).copyWith(
@@ -348,8 +408,8 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               color:
                   baseTheme.colorScheme.outlineVariant.withValues(alpha: 128),
             ),
-            elevation: 1,
-            shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 26),
+            elevation: 0,
+            shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 16),
             surfaceTintColor: Colors.transparent,
           ).copyWith(
             shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
@@ -418,32 +478,34 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             elevation: const WidgetStatePropertyAll(4),
           ),
         ),
-      ),
-      builder: (context, child) {
-        return Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFF8F9FF), Color(0xFFF0F2F8)],
+        ),
+        builder: (context, child) {
+          return Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFF8F9FF), Color(0xFFF0F2F8)],
+              ),
             ),
-          ),
-          child: child,
-        );
-      },
-      darkTheme: darkTheme.copyWith(
+            child: child,
+          );
+        },
+        darkTheme: darkTheme.copyWith(
         scaffoldBackgroundColor: darkTheme.colorScheme.surface,
         appBarTheme: AppBarTheme(
           centerTitle: false,
           elevation: 0,
           scrolledUnderElevation: 0,
-          backgroundColor: Colors.black.withValues(alpha: 204),
+          backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           foregroundColor: darkTheme.colorScheme.onSurface,
-          systemOverlayStyle: SystemUiOverlayStyle(
+          systemOverlayStyle: const SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.light,
             statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
           ),
         ),
         cardTheme: CardThemeData(
@@ -459,7 +521,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
         navigationBarTheme: NavigationBarThemeData(
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           elevation: 0,
-          backgroundColor: Colors.black.withValues(alpha: 204),
+          backgroundColor: Colors.transparent,
           indicatorColor: darkTheme.colorScheme.secondaryContainer,
           indicatorShape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(expressiveRadius),
@@ -541,8 +603,8 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
           ),
         ),
-      ),
-      home: PageTransitionSwitcher(
+        ),
+        home: PageTransitionSwitcher(
         duration: const Duration(milliseconds: 300),
         transitionBuilder: (Widget child, Animation<double> primaryAnimation,
             Animation<double> secondaryAnimation) {
@@ -587,6 +649,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
                       });
                     },
                   ),
+        ),
       ),
     );
   }
