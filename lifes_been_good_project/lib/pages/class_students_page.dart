@@ -26,73 +26,13 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
   bool _loading = true;
   String _status = '';
   List<Student> _students = const [];
+  Map<String, String> _avatars = {};
 
   List<String> _myClasses = [];
   String _selectedClass = '';
 
   static const _studentsHeader =
       'id,student_no,full_name,class_code,phone,position';
-
-  Future<File> _studentsFile() async {
-    return File(p.join(widget.session.dataDir, 'students.csv'));
-  }
-
-  Future<void> _ensureStudentsSchema() async {
-    final f = await _studentsFile();
-    if (!await f.exists()) {
-      await f.writeAsString('$_studentsHeader\n', encoding: utf8);
-      return;
-    }
-    final content = await f.readAsString(encoding: utf8);
-    final lines = const LineSplitter().convert(content);
-    if (lines.isEmpty) {
-      await f.writeAsString('$_studentsHeader\n', encoding: utf8);
-      return;
-    }
-    final header = lines.first.trim();
-    if (header == _studentsHeader) return;
-    if (header == 'id,student_no,full_name,class_code,phone') {
-      final out = <String>[_studentsHeader];
-      for (var i = 1; i < lines.length; i++) {
-        final line = lines[i].trim();
-        if (line.isEmpty) continue;
-        final parts = line.split(',');
-        if (parts.length < 5) continue;
-        out.add('${parts[0]},${parts[1]},${parts[2]},${parts[3]},${parts[4]},');
-      }
-      await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
-    }
-  }
-
-  Future<List<Map<String, String>>> _readCsvRows(File f) async {
-    if (!await f.exists()) return const [];
-    final content = await f.readAsString(encoding: utf8);
-    final lines = const LineSplitter()
-        .convert(content)
-        .where((e) => e.trim().isNotEmpty)
-        .toList();
-    if (lines.length <= 1) return const [];
-    final headers = lines.first.split(',').map((e) => e.trim()).toList();
-    final rows = <Map<String, String>>[];
-    for (var i = 1; i < lines.length; i++) {
-      final parts = lines[i].split(',');
-      final row = <String, String>{};
-      for (var j = 0; j < headers.length && j < parts.length; j++) {
-        row[headers[j]] = parts[j];
-      }
-      rows.add(row);
-    }
-    return rows;
-  }
-
-  Future<void> _writeCsv(
-      File f, List<String> headers, List<Map<String, String>> rows) async {
-    final out = <String>[headers.join(',')];
-    for (final r in rows) {
-      out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
-    }
-    await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
-  }
 
   String _positionLabel(String v, LocaleProvider loc) {
     final s = v.trim();
@@ -130,7 +70,8 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         widget.session.profile.id,
       );
 
-      final studentsFuture = widget.session.features.hasFeature('students_list').then((has) async {
+      final studentsFuture =
+          widget.session.features.hasFeature('students_list').then((has) async {
         if (has) {
           return await widget.session.features.listStudents();
         } else {
@@ -139,8 +80,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
             return {
               'ok': false,
               'error': {
-                'message': loc.t(
-                    '缺少 students_list，且未配置 campus_cli',
+                'message': loc.t('缺少 students_list，且未配置 campus_cli',
                     'Missing students_list, and campus_cli is not configured')
               }
             };
@@ -148,6 +88,27 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
           return await cli.call('students.list', {});
         }
       });
+
+      final Map profilesRes = await widget.session.features
+          .hasFeature('profiles_list')
+          .then((has) async {
+        if (has) return await widget.session.features.listProfiles();
+        return await widget.session.cli?.call('profiles.list', {}) ??
+            {'ok': false};
+      });
+      final avatarsMap = <String, String>{};
+      if (profilesRes['ok'] == true) {
+        final items =
+            ((profilesRes['data'] ?? const {}) as Map)['items'] as List? ?? [];
+        for (final e in items) {
+          final m = (e as Map).cast<String, dynamic>();
+          final sNo = (m['student_no'] ?? '').toString().trim();
+          final av = (m['avatar'] ?? '').toString().trim();
+          if (sNo.isNotEmpty && av.isNotEmpty) {
+            avatarsMap[sNo] = av;
+          }
+        }
+      }
 
       final studentsRes = await studentsFuture;
 
@@ -187,7 +148,9 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         _myClasses = classes;
         _selectedClass = sel;
         _students = filtered;
+        _avatars = avatarsMap;
       });
+
       widget.onReady?.call();
     } catch (e) {
       if (!mounted) return;
@@ -197,6 +160,217 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
       });
       widget.onReady?.call();
     }
+  }
+
+  Future<void> _editStudent(Student s) async {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    final nameCtrl = TextEditingController(text: s.fullName);
+    final noCtrl = TextEditingController(text: s.studentNo);
+    final phoneCtrl = TextEditingController(text: s.phone);
+    var pos = s.position.trim().isEmpty ? '' : s.position.trim();
+
+    List<String> allClasses = [];
+    try {
+      allClasses = await LocalProfiles.getAllClasses(widget.session.dataDir);
+    } catch (_) {}
+
+    var selectedClass = s.classCode.trim();
+    if (selectedClass.isEmpty && allClasses.isNotEmpty) {
+      selectedClass = allClasses.first;
+    }
+
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              title: Text(loc.t('编辑学生信息', 'Edit Student Info')),
+              content: SizedBox(
+                width: 460,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: noCtrl,
+                        decoration: InputDecoration(
+                          labelText: loc.t('学号', 'Student ID'),
+                          filled: true,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: nameCtrl,
+                        decoration: InputDecoration(
+                          labelText: loc.t('姓名', 'Name'),
+                          filled: true,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: (allClasses.contains(selectedClass) ||
+                                selectedClass.isEmpty)
+                            ? selectedClass
+                            : null,
+                        decoration: InputDecoration(
+                          labelText: loc.t('班级', 'Class'),
+                          filled: true,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: '',
+                            child: Text(loc.t('（不指定）', '(Not specified)')),
+                          ),
+                          ...allClasses.map(
+                              (c) => DropdownMenuItem(value: c, child: Text(c)))
+                        ],
+                        onChanged: (v) {
+                          setLocal(() {
+                            selectedClass = v ?? '';
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: phoneCtrl,
+                        decoration: InputDecoration(
+                          labelText: loc.t('电话', 'Phone'),
+                          filled: true,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (widget.session.isTeacher)
+                        DropdownButtonFormField<String>(
+                          value: pos.isEmpty ? '' : pos,
+                          decoration: InputDecoration(
+                            labelText: loc.t('职位', 'Position'),
+                            filled: true,
+                            fillColor: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(alpha: 77),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(28),
+                              borderSide: BorderSide.none,
+                            ),
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(loc.t('普通学生', 'Regular Student')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'cadre',
+                              child: Text(loc.t('班干部', 'Class Cadre')),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            setLocal(() {
+                              pos = v ?? '';
+                            });
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop('cancel'),
+                  child: Text(loc.t('取消', 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop('ok'),
+                  child: Text(loc.t('保存', 'Save')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    final newNo = noCtrl.text.trim();
+    final newName = nameCtrl.text.trim();
+    final newPhone = phoneCtrl.text.trim();
+
+    noCtrl.dispose();
+    nameCtrl.dispose();
+    phoneCtrl.dispose();
+
+    if (res != 'ok') return;
+
+    if (!await widget.session.features.hasFeature('students_insert')) {
+      setState(() {
+        _status = loc.t(
+            '未找到二进制：students_insert', 'Binary not found: students_insert');
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _status = '';
+    });
+
+    final res2 = await widget.session.features.insertStudent(
+      id: s.id,
+      studentNo: newNo,
+      fullName: newName,
+      classCode: selectedClass,
+      phone: newPhone,
+      position: pos,
+    );
+
+    if (res2['ok'] != true) {
+      final msg = ((res2['error'] ?? const {}) as Map)['message']?.toString() ??
+          'unknown error';
+      setState(() {
+        _loading = false;
+        _status = msg;
+      });
+      return;
+    }
+
+    await _refresh();
   }
 
   Future<void> _addStudent() async {
@@ -213,6 +387,17 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
+            final cs = Theme.of(ctx).colorScheme;
+            final inputTheme = InputDecorationTheme(
+              filled: true,
+              fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide.none,
+              ),
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+            );
+
             return AlertDialog(
               title: Text(loc.t('新增学生', 'Add Student')),
               content: SizedBox(
@@ -224,25 +409,47 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                       TextField(
                         controller: noCtrl,
                         decoration: InputDecoration(
-                            labelText: loc.t('学号', 'Student ID'),
-                            border: const OutlineInputBorder()),
+                          labelText: loc.t('学号', 'Student ID'),
+                          filled: true,
+                          fillColor:
+                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: nameCtrl,
                         decoration: InputDecoration(
-                            labelText: loc.t('姓名', 'Name'),
-                            border: const OutlineInputBorder()),
+                          labelText: loc.t('姓名', 'Name'),
+                          filled: true,
+                          fillColor:
+                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: (_myClasses.contains(clsSel) || clsSel.isEmpty)
                             ? clsSel
-                            : '',
-                        isExpanded: true,
+                            : null,
                         decoration: InputDecoration(
                           labelText: loc.t('班级（可选）', 'Class (Optional)'),
-                          border: const OutlineInputBorder(),
+                          filled: true,
+                          fillColor:
+                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                         ),
                         items: [
                           DropdownMenuItem(
@@ -250,11 +457,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                             child: Text(loc.t('（不指定）', '(Not specified)')),
                           ),
                           ..._myClasses.map(
-                            (c) => DropdownMenuItem(
-                              value: c,
-                              child: Text(c),
-                            ),
-                          ),
+                              (c) => DropdownMenuItem(value: c, child: Text(c)))
                         ],
                         onChanged: (v) {
                           setLocal(() {
@@ -266,26 +469,41 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                       TextField(
                         controller: phoneCtrl,
                         decoration: InputDecoration(
-                            labelText: loc.t('电话', 'Phone'),
-                            border: const OutlineInputBorder()),
+                          labelText: loc.t('电话', 'Phone'),
+                          filled: true,
+                          fillColor:
+                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       if (widget.session.isTeacher)
                         DropdownButtonFormField<String>(
-                          value: pos,
-                          isExpanded: true,
+                          value: pos.isEmpty ? '' : pos,
                           decoration: InputDecoration(
                             labelText: loc.t('职位', 'Position'),
-                            border: const OutlineInputBorder(),
+                            filled: true,
+                            fillColor: cs.surfaceContainerHighest
+                                .withValues(alpha: 77),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(28),
+                              borderSide: BorderSide.none,
+                            ),
+                            floatingLabelBehavior: FloatingLabelBehavior.never,
                           ),
                           items: [
                             DropdownMenuItem(
-                                value: '',
-                                child: Text(
-                                    loc.t('普通学生', 'Regular Student'))),
+                              value: '',
+                              child: Text(loc.t('普通学生', 'Regular Student')),
+                            ),
                             DropdownMenuItem(
-                                value: 'cadre',
-                                child: Text(loc.t('班干部', 'Class Cadre'))),
+                              value: 'cadre',
+                              child: Text(loc.t('班干部', 'Class Cadre')),
+                            ),
                           ],
                           onChanged: (v) {
                             setLocal(() {
@@ -340,16 +558,11 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
     });
 
     try {
-      await _ensureStudentsSchema();
-      final f = await _studentsFile();
-      final content = await f.readAsString(encoding: utf8);
-      final lines = const LineSplitter()
-          .convert(content)
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-      final header = (lines.isEmpty ? _studentsHeader : lines.first).trim();
-      final headers = header.split(',');
-      final rows = await _readCsvRows(f);
+      final res = await widget.session.features
+          .csvOp(action: 'read', file: 'students.csv');
+      final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
+      final rows = items.map((e) => (e as Map).cast<String, String>()).toList();
+
       final exists = rows.any((r) => (r['student_no'] ?? '').trim() == no);
       if (exists) {
         if (!mounted) return;
@@ -359,16 +572,35 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         });
         return;
       }
+      final newId = 's_${DateTime.now().millisecondsSinceEpoch}';
       rows.add({
-        'id': 's_${DateTime.now().millisecondsSinceEpoch}',
+        'id': newId,
         'student_no': no.replaceAll(',', ''),
         'full_name': name.replaceAll(',', ''),
         'class_code': cls.replaceAll(',', ''),
         'phone': phone.replaceAll(',', ''),
         'position': pos.replaceAll(',', ''),
       });
-      await _writeCsv(f, headers, rows);
+      final headers = _studentsHeader.split(',');
+      await widget.session.features.csvOp(
+          action: 'write', file: 'students.csv', headers: headers, rows: rows);
       await _refresh();
+      final defaultPwd = await LocalProfiles.ensureStudentAccountByTeacher(
+        dataDir: widget.session.dataDir,
+        profileId: newId,
+        studentNo: no,
+        fullName: name,
+        classCode: cls,
+        phone: phone,
+      );
+      if (defaultPwd != null && mounted) {
+        setState(() {
+          _status = loc.t(
+            '已创建学生账号，默认密码：$defaultPwd',
+            'Student account created. Default password: $defaultPwd',
+          );
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -408,21 +640,16 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
     });
 
     try {
-      await _ensureStudentsSchema();
-      final f = await _studentsFile();
-      final content = await f.readAsString(encoding: utf8);
-      final lines = const LineSplitter()
-          .convert(content)
-          .where((e) => e.trim().isNotEmpty)
-          .toList();
-      if (lines.isEmpty) {
-        await _refresh();
-        return;
-      }
-      final headers = lines.first.split(',');
-      final rows = await _readCsvRows(f);
+      final res = await widget.session.features
+          .csvOp(action: 'read', file: 'students.csv');
+      final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
+      final rows = items.map((e) => (e as Map).cast<String, String>()).toList();
+
       rows.removeWhere((r) => (r['id'] ?? '').trim() == s.id);
-      await _writeCsv(f, headers, rows);
+
+      final headers = _studentsHeader.split(',');
+      await widget.session.features.csvOp(
+          action: 'write', file: 'students.csv', headers: headers, rows: rows);
       await _refresh();
     } catch (e) {
       if (!mounted) return;
@@ -489,8 +716,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(loc.t('删除班级', 'Delete Class')),
-        content: Text(loc.t(
-            '确认删除班级 $_selectedClass？\n此操作仅从您的管理列表中移除该班级。',
+        content: Text(loc.t('确认删除班级 $_selectedClass？\n此操作仅从您的管理列表中移除该班级。',
             'Delete class $_selectedClass?\nThis will only remove it from your managed list.')),
         actions: [
           TextButton(
@@ -526,22 +752,41 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
   Widget build(BuildContext context) {
     final loc = Provider.of<LocaleProvider>(context);
 
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    final showDrawerButton = !isDesktop || isPortrait;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(loc.t('学生管理', 'Students')),
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () {
-              ScaffoldState? scaffold = Scaffold.maybeOf(context);
-              if (scaffold != null && !scaffold.hasDrawer) {
-                scaffold =
-                    scaffold.context.findAncestorStateOfType<ScaffoldState>();
-              }
-              scaffold?.openDrawer();
-            },
-          ),
-        ),
+        title: Text(loc.t('学生名单', 'Students'),
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
+        leadingWidth: showDrawerButton ? 56.0 : 16.0,
+        leading: showDrawerButton
+            ? Builder(
+                builder: (context) {
+                  return IconButton(
+                    icon: const Icon(Icons.menu),
+                    onPressed: () {
+                      ScaffoldState? scaffold = Scaffold.maybeOf(context);
+                      if (scaffold != null && !scaffold.hasDrawer) {
+                        scaffold = scaffold.context
+                            .findAncestorStateOfType<ScaffoldState>();
+                      }
+                      scaffold?.openDrawer();
+                    },
+                  );
+                },
+              )
+            : const SizedBox.shrink(),
+        centerTitle: false,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -593,18 +838,17 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: _status.trim().isNotEmpty
-                ? Center(
-                    child: Text(
-                      _status,
-                      style:
-                          TextStyle(color: Theme.of(context).colorScheme.error),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : _loading
-                    ? const SizedBox.shrink()
-                    : _students.isEmpty
-                        ? Center(child: Text(loc.t('暂无学生', 'No students')))
+            ? Center(
+                child: Text(
+                  _status,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            : _loading
+                ? const SizedBox.shrink()
+                : _students.isEmpty
+                    ? Center(child: Text(loc.t('暂无学生', 'No students')))
                     : ListView.builder(
                         padding: const EdgeInsets.only(top: 8, bottom: 80),
                         itemCount: _students.length,
@@ -643,28 +887,81 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                                 '${s.studentNo} · ${_positionLabel(s.position, loc)}',
                                 style: tt.bodySmall,
                               ),
-                              trailing: widget.session.canDeleteStudents
-                                  ? IconButton(
-                                      onPressed: _loading
-                                          ? null
-                                          : () => _deleteStudent(s),
-                                      icon: Icon(Icons.delete_outline,
-                                          color: cs.error),
-                                    )
-                                  : Icon(Icons.chevron_right,
-                                      color: cs.outline),
+                              trailing: null,
                               onTap: () async {
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => StudentDetailPage(
-                                      session: widget.session,
-                                      student: s,
-                                    ),
-                                  ),
-                                );
-                                if (mounted) {
-                                  _refresh();
-                                }
+                                final loc = Provider.of<LocaleProvider>(context,
+                                    listen: false);
+                                await showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (ctx) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(
+                                          color: cs.surfaceContainerLowest,
+                                          borderRadius:
+                                              const BorderRadius.vertical(
+                                                  top: Radius.circular(28)),
+                                        ),
+                                        child: SafeArea(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                width: 40,
+                                                height: 4,
+                                                margin: const EdgeInsets.only(
+                                                    bottom: 24),
+                                                decoration: BoxDecoration(
+                                                  color: cs.onSurfaceVariant
+                                                      .withOpacity(0.4),
+                                                  borderRadius:
+                                                      BorderRadius.circular(2),
+                                                ),
+                                              ),
+                                              Text(
+                                                loc.t(
+                                                    '学生操作', 'Student Options'),
+                                                style: tt.titleLarge?.copyWith(
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                              ),
+                                              const SizedBox(height: 24),
+                                              ListTile(
+                                                leading: Icon(
+                                                    Icons.edit_note_rounded,
+                                                    color: cs.primary),
+                                                title: Text(loc.t('编辑学生信息',
+                                                    'Edit Student Info')),
+                                                onTap: () {
+                                                  Navigator.of(ctx).pop();
+                                                  if (!_loading)
+                                                    _editStudent(s);
+                                                },
+                                              ),
+                                              if (widget
+                                                  .session.canDeleteStudents)
+                                                ListTile(
+                                                  leading: Icon(
+                                                      Icons.delete_outline,
+                                                      color: cs.error),
+                                                  title: Text(
+                                                      loc.t('删除学生',
+                                                          'Delete Student'),
+                                                      style: TextStyle(
+                                                          color: cs.error)),
+                                                  onTap: () {
+                                                    Navigator.of(ctx).pop();
+                                                    if (!_loading)
+                                                      _deleteStudent(s);
+                                                  },
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    });
                               },
                             ),
                           );
