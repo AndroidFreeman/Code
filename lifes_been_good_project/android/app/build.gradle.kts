@@ -49,6 +49,8 @@ android {
                         "todos_toggle",
                         "attendance_session_start",
                         "attendance_record_mark",
+                        "csv_op",
+                        "json_op",
                     )
                 )
             }
@@ -93,6 +95,8 @@ val nativeBinNames = listOf(
     "todos_toggle",
     "attendance_session_start",
     "attendance_record_mark",
+    "csv_op",
+    "json_op",
 )
 
 fun registerSyncNativeBinsTask(variant: String) {
