@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-04-09 11:29:34
+ * @LastEditTime: 2026-04-13 17:12:37
  * @FilePath: /Code/LearnDS_HBPU/0.3_myStack.cpp
  */
 
@@ -121,35 +121,82 @@ int popLinkedListStack(LinkedListStack* s) {
     return data;
 }
 
+void change(int num) {
+    if (num == 0) {
+        cout << "0" << endl;
+        return;
+    }
+    ArrayStack* s = newArrayStack();
+    int temp = num;
+    while (temp > 0) {
+        pushArrayStack(s, temp % 2);
+        temp /= 2;
+    }
+    cout << num << "Bin: ";
+    while (!isEmptyArrayStack(s)) {
+        cout << popArrayStack(s);
+    }
+    cout << endl;
+    delArrayStack(s);
+}
+
 int main() {
-    cout << "--- ArrayStack Test ---" << endl;
-    ArrayStack* as = newArrayStack();
-    pushArrayStack(as, 100);
-    pushArrayStack(as, 200);
-    pushArrayStack(as, 300);
+    int choice;
+    int x, e;
+    ArrayStack* s = newArrayStack();
 
-    cout << "ArrayStack Size: " << sizeArrayStack(as) << endl;
-    cout << "ArrayStack Peek: " << peekArrayStack(as) << endl;
-    cout << "ArrayStack Pop: " << popArrayStack(as) << endl;
-    cout << "ArrayStack Pop: " << popArrayStack(as) << endl;
-    
-    delArrayStack(as);
-    cout << "ArrayStack memory cleared." << endl << endl;
+    do {
+        printf("===============================\n");
+        printf("           0:退出\n");
+        printf("           1:初始化栈\n");
+        printf("           2:入栈\n");
+        printf("           3:出栈\n");
+        printf("           4:读取栈顶元素\n");
+        printf("           5:进制转换(任务二)\n");
+        printf("===============================\n");
+        printf("输入操作选择代码(0-5):");
+        
+        if (scanf("%d", &choice) != 1) break;
 
+        while (choice < 0 || choice > 5) {
+            printf("输入有误，请重新输入(0-5):");
+            scanf("%d", &choice);
+        }
 
-    cout << "--- LinkedListStack Test ---" << endl;
-    LinkedListStack* ls = newLinkedListStack();
-    pushLinkedListStack(ls, 10);
-    pushLinkedListStack(ls, 20);
-    pushLinkedListStack(ls, 30);
-
-    cout << "LinkedListStack Size: " << sizeLinkdedListStack(ls) << endl;
-    cout << "LinkedListStack Peek: " << peekLinkedListStack(ls) << endl;
-    cout << "LinkedListStack Pop: " << popLinkedListStack(ls) << endl;
-    cout << "LinkedListStack Pop: " << popLinkedListStack(ls) << endl;
-
-    delLinkedListStack(ls);
-    cout << "LinkedListStack memory cleared." << endl;
-
+        switch (choice) {
+            case 0:
+                delArrayStack(s);
+                exit(0);
+            case 1:
+                delArrayStack(s);
+                s = newArrayStack();
+                printf("栈已初始化\n");
+                break;
+            case 2:
+                printf("请输入要入栈的整数值:");
+                scanf("%d", &x);
+                pushArrayStack(s, x);
+                break;
+            case 3:
+                if (isEmptyArrayStack(s)) {
+                    printf("栈为空，无法出栈\n");
+                } else {
+                    e = popArrayStack(s);
+                    printf("出栈元素的值是:%d\n", e);
+                }
+                break;
+            case 4:
+                e = peekArrayStack(s);
+                if (e != INT_MIN) {
+                    printf("栈顶元素的值是:%d\n", e);
+                }
+                break;
+            case 5:
+                printf("请输入要转换的十进制数:");
+                scanf("%d", &x);
+                change(x);
+                break;
+        }
+    } while (choice != 0);
     return 0;
 }
