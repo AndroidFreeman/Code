@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:provider/provider.dart';
 
 import '../main.dart';
 import '../models/profile.dart';
 import '../services/local_profiles.dart';
 import '../state/session.dart';
+import '../widgets/expressive_ui.dart';
 
 class ProfilePage extends StatefulWidget {
   final Session session;
@@ -56,9 +58,37 @@ class _ProfilePageState extends State<ProfilePage> {
       allowMultiple: false,
     );
     if (result != null && result.files.single.path != null) {
-      setState(() {
-        _avatarPath = result.files.single.path!;
-      });
+      final path = result.files.single.path!;
+      final loc = Provider.of<LocaleProvider>(context, listen: false);
+      final theme = Theme.of(context);
+
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 90,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: loc.t('裁切头像', 'Crop Avatar'),
+            toolbarColor: theme.colorScheme.surface,
+            toolbarWidgetColor: theme.colorScheme.onSurface,
+            activeControlsWidgetColor: theme.colorScheme.primary,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+          ),
+          IOSUiSettings(
+            title: loc.t('裁切头像', 'Crop Avatar'),
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+          ),
+        ],
+      );
+
+      if (croppedFile != null) {
+        setState(() {
+          _avatarPath = croppedFile.path;
+        });
+      }
     }
   }
 
@@ -99,9 +129,7 @@ class _ProfilePageState extends State<ProfilePage> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(loc.t('保存成功', 'Saved'))),
-        );
+        showExpressiveSnackBar(context, loc.t('保存成功', 'Saved'));
         setState(() {}); // refresh UI
       }
     } catch (e) {
@@ -120,7 +148,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
     final loc = Provider.of<LocaleProvider>(context);
 
     return Scaffold(
