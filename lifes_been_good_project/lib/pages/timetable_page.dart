@@ -19,6 +19,7 @@ import '../widgets/expressive_ui.dart';
 class TimetableController {
   Future<void> Function()? importWakeUp;
   Future<void> Function()? addCourse;
+  Future<void> Function()? clearTimetable;
 }
 
 class TimetablePage extends StatefulWidget {
@@ -40,7 +41,6 @@ class TimetablePage extends StatefulWidget {
 }
 
 class _TimetablePageState extends State<TimetablePage> {
-  bool _loading = true;
   String _status = '';
   List<TimetableItem> _items = const [];
   Map<String, Course> _courses = const {};
@@ -53,9 +53,6 @@ class _TimetablePageState extends State<TimetablePage> {
   bool _showWeekend = true;
 
   static const _uiPrefsFileName = 'timetable_ui_prefs.json';
-
-  static const _timetableHeader =
-      'id,owner_profile_id,weekday,start_period,end_period,start_time,end_time,course_id,location,created_by_profile_id,is_locked,weeks';
 
   static const _expressiveColors = <Color>[
     Color(0xFFE8F5E9), // Pale Green
@@ -127,6 +124,7 @@ class _TimetablePageState extends State<TimetablePage> {
     });
     widget.controller?.importWakeUp = _importWakeupSchedule;
     widget.controller?.addCourse = () => _editCell();
+    widget.controller?.clearTimetable = _clearTimetable;
   }
 
   @override
@@ -134,11 +132,84 @@ class _TimetablePageState extends State<TimetablePage> {
     if (widget.controller?.importWakeUp == _importWakeupSchedule) {
       widget.controller?.importWakeUp = null;
     }
+    if (widget.controller?.clearTimetable == _clearTimetable) {
+      widget.controller?.clearTimetable = null;
+    }
     widget.controller?.addCourse = null;
     _currentWeekN.dispose();
     _pageController.dispose();
     _gridScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _clearTimetable() async {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(loc.t('清空课表', 'Clear Timetable')),
+        content: Text(loc.t('确定要清空当前展示的课表吗？此操作不可撤销。',
+            'Are you sure you want to clear the currently displayed timetable? This action cannot be undone.')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(loc.t('取消', 'Cancel')),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(loc.t('清空', 'Clear')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    setState(() {
+      _status = loc.t('正在清空...', 'Clearing...');
+    });
+
+    try {
+      final rows = await _readCsvRows('timetable.csv');
+      final originalCount = rows.length;
+      rows.removeWhere((r) => r['owner_profile_id'] == _viewingProfileId);
+
+      if (rows.length != originalCount) {
+        final headers = [
+          'id',
+          'owner_profile_id',
+          'weekday',
+          'start_period',
+          'end_period',
+          'start_time',
+          'end_time',
+          'course_id',
+          'location',
+          'created_by_profile_id',
+          'is_locked',
+          'weeks'
+        ];
+        await _writeCsv('timetable.csv', headers, rows);
+      }
+
+      await _refresh();
+      if (mounted) {
+        showExpressiveSnackBar(
+          context,
+          loc.t('课表已清空', 'Timetable cleared'),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _status = loc.t('清空失败: $e', 'Clear failed: $e');
+        });
+      }
+    }
   }
 
   int _calculateCurrentWeek() {
@@ -191,16 +262,14 @@ class _TimetablePageState extends State<TimetablePage> {
 
   Future<void> _refresh() async {
     setState(() {
-      _loading = true;
       _status = '';
     });
 
     // Ensure data schema is up-to-date
     // Removed old schema update methods
 
-    List<String> teacherClasses = [];
     if (widget.session.isTeacher) {
-      teacherClasses = await LocalProfiles.getTeacherClasses(
+      _teacherClasses = await LocalProfiles.getTeacherClasses(
         widget.session.dataDir,
         widget.session.profile.id,
       );
@@ -211,10 +280,10 @@ class _TimetablePageState extends State<TimetablePage> {
       coursesRes = await widget.session.features.listCourses();
     } else {
       final cli = widget.session.cli;
+      if (!mounted) return;
+      final loc = Provider.of<LocaleProvider>(context, listen: false);
       if (cli == null) {
-        final loc = Provider.of<LocaleProvider>(context, listen: false);
         setState(() {
-          _loading = false;
           _status = loc.t('缺少 courses_list，且未配置 campus_cli',
               'Missing courses_list, and campus_cli is not configured');
         });
@@ -246,10 +315,10 @@ class _TimetablePageState extends State<TimetablePage> {
       res = await widget.session.features.listTimetable();
     } else {
       final cli = widget.session.cli;
+      if (!mounted) return;
+      final loc = Provider.of<LocaleProvider>(context, listen: false);
       if (cli == null) {
-        final loc = Provider.of<LocaleProvider>(context, listen: false);
         setState(() {
-          _loading = false;
           _status = loc.t('缺少 timetable_list，且未配置 campus_cli',
               'Missing timetable_list, and campus_cli is not configured');
         });
@@ -293,8 +362,6 @@ class _TimetablePageState extends State<TimetablePage> {
 
     if (!mounted) return;
     setState(() {
-      _loading = false;
-      _teacherClasses = teacherClasses;
       _courses = courses;
       _items = items;
       // Force rebuild the color map to discard any cached explicit colors from older sessions if they were removed
@@ -311,27 +378,6 @@ class _TimetablePageState extends State<TimetablePage> {
       if (p.start == s && p.end == e) return p.period;
     }
     return 0;
-  }
-
-  String _weekdayLabel(int w, LocaleProvider loc) {
-    switch (w) {
-      case 1:
-        return loc.t('周一', 'Mon');
-      case 2:
-        return loc.t('周二', 'Tue');
-      case 3:
-        return loc.t('周三', 'Wed');
-      case 4:
-        return loc.t('周四', 'Thu');
-      case 5:
-        return loc.t('周五', 'Fri');
-      case 6:
-        return loc.t('周六', 'Sat');
-      case 7:
-        return loc.t('周日', 'Sun');
-      default:
-        return loc.t('未知', 'Unknown');
-    }
   }
 
   Future<List<Map<String, String>>> _readCsvRows(String filename) async {
@@ -367,75 +413,6 @@ class _TimetablePageState extends State<TimetablePage> {
     return ids;
   }
 
-  Future<void> _upsertTimetable({
-    required String ownerProfileId,
-    required int weekday,
-    required int startPeriod,
-    required int endPeriod,
-    required String courseId,
-    required String location,
-    required String createdByProfileId,
-    required bool isLocked,
-    required String weeks,
-  }) async {
-    final rows = await _readCsvRows('timetable.csv');
-    final headers = [
-      'id',
-      'owner_profile_id',
-      'weekday',
-      'start_period',
-      'end_period',
-      'start_time',
-      'end_time',
-      'course_id',
-      'location',
-      'created_by_profile_id',
-      'is_locked',
-      'weeks'
-    ];
-
-    final idx = rows.indexWhere((r) {
-      if ((r['owner_profile_id'] ?? '') != ownerProfileId) return false;
-      if (int.tryParse((r['weekday'] ?? '').toString()) != weekday)
-        return false;
-      if (int.tryParse((r['start_period'] ?? '').toString()) != startPeriod)
-        return false;
-      return true;
-    });
-
-    if (idx >= 0) {
-      final lockedRaw = (rows[idx]['is_locked'] ?? '').toLowerCase();
-      final locked =
-          lockedRaw == 'true' || lockedRaw == '1' || lockedRaw == 'yes';
-      if (locked) {
-        final loc = Provider.of<LocaleProvider>(context, listen: false);
-        throw loc.t('该课表由老师添加，学生不可更改',
-            'This schedule was added by a teacher and cannot be modified by students');
-      }
-      rows.removeAt(idx);
-    }
-
-    final sp = _periods.firstWhere((e) => e.period == startPeriod);
-    final ep = _periods.firstWhere((e) => e.period == endPeriod);
-    final id = 'tt_${DateTime.now().millisecondsSinceEpoch}';
-    final row = <String, String>{
-      'id': id,
-      'owner_profile_id': ownerProfileId,
-      'weekday': weekday.toString(),
-      'start_period': startPeriod.toString(),
-      'end_period': endPeriod.toString(),
-      'start_time': sp.start,
-      'end_time': ep.end,
-      'course_id': courseId,
-      'location': location,
-      'created_by_profile_id': createdByProfileId,
-      'is_locked': isLocked ? 'true' : 'false',
-      'weeks': weeks,
-    };
-    rows.add(row);
-    await _writeCsv('timetable.csv', headers, rows);
-  }
-
   Future<void> _deleteTimetable({
     required String ownerProfileId,
     required int weekday,
@@ -461,8 +438,9 @@ class _TimetablePageState extends State<TimetablePage> {
     ];
     bool isMatch(Map<String, String> r) {
       if ((r['owner_profile_id'] ?? '') != ownerProfileId) return false;
-      if (int.tryParse((r['weekday'] ?? '').toString()) != weekday)
+      if (int.tryParse((r['weekday'] ?? '').toString()) != weekday) {
         return false;
+      }
       if (int.tryParse((r['start_period'] ?? '').toString()) != startPeriod) {
         return false;
       }
@@ -514,6 +492,7 @@ class _TimetablePageState extends State<TimetablePage> {
         ),
       );
       if (ok != true) return;
+      if (!mounted) return;
     }
 
     final teacherId = widget.session.profile.id;
@@ -545,10 +524,9 @@ class _TimetablePageState extends State<TimetablePage> {
               item.createdByProfileId == widget.session.profile.id);
       if (!canDelete) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(loc.t(
-                  '无权限删除该课表项', 'No permission to delete this schedule item'))),
+        showExpressiveSnackBar(
+          context,
+          loc.t('无权限删除该课表项', 'No permission to delete this schedule item'),
         );
         return;
       }
@@ -563,8 +541,9 @@ class _TimetablePageState extends State<TimetablePage> {
 
     await _refresh();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(loc.t('已删除课表项', 'Schedule item deleted'))),
+    showExpressiveSnackBar(
+      context,
+      loc.t('已删除课表项', 'Schedule item deleted'),
     );
   }
 
@@ -684,10 +663,10 @@ class _TimetablePageState extends State<TimetablePage> {
     );
 
     if (result == null) return;
+    if (!mounted) return;
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
 
     try {
-      final loc = Provider.of<LocaleProvider>(context, listen: false);
-
       final action = (result['action'] ?? '').toString();
       if (action == 'delete' && keyItem != null) {
         await _deleteTimetableForItem(keyItem, skipConfirm: true);
@@ -830,16 +809,14 @@ class _TimetablePageState extends State<TimetablePage> {
         final target = _viewingProfileId.startsWith('class_')
             ? '${loc.t('班级', 'Class')} ${_viewingProfileId.substring('class_'.length)}'
             : loc.t('我的课表', 'Timetable');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(loc.t('成功添加课程到：$target', 'Course added to: $target')),
-          ),
+        showExpressiveSnackBar(
+          context,
+          loc.t('成功添加课程到：$target', 'Course added to: $target'),
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      showExpressiveSnackBar(context, e.toString());
     }
   }
 
@@ -849,27 +826,32 @@ class _TimetablePageState extends State<TimetablePage> {
       if (!item.isWeekIncluded(_currentWeek)) continue;
       final day = item.weekday;
       var period = item.period;
-      if (period <= 0)
+      if (period <= 0) {
         period = _findPeriodForTimes(item.startTime, item.endTime);
-      if (period <= 0) continue;
+      }
+      if (period <= 0) {
+        continue;
+      }
       byDay.putIfAbsent(day, () => {})[period] = item;
     }
     return byDay;
   }
 
   Future<void> _importWakeupSchedule() async {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
     try {
-      final loc = Provider.of<LocaleProvider>(context, listen: false);
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['wakeup_schedule', 'json', 'txt'],
         allowMultiple: false,
       );
       if (result == null || result.files.isEmpty) return;
+      if (!mounted) return;
       final path = result.files.first.path;
       if (path == null) return;
 
       final content = await File(path).readAsString();
+      if (!mounted) return;
 
       // Parse the 5 JSON blocks
       // A simple way to split them is by finding the top-level structures
@@ -906,11 +888,9 @@ class _TimetablePageState extends State<TimetablePage> {
             '无效的 wakeup_schedule 文件格式', 'Invalid wakeup_schedule file format');
       }
 
-      final coursesJson = jsonDecode(blocks[3]) as List;
       final itemsJson = jsonDecode(blocks[4]) as List;
 
       setState(() {
-        _loading = true;
         _status = loc.t('正在导入...', 'Importing...');
       });
 
@@ -919,10 +899,9 @@ class _TimetablePageState extends State<TimetablePage> {
       var seq = 0;
       String nextTtId() => 'tt_${base}_${seq++}';
 
-      // Keep track of mapping from old course ID to new course ID
-      final courseIdMap = <int, String>{};
-
       // Import Courses
+      final coursesJson = jsonDecode(blocks[3]) as List;
+      final courseIdMap = <int, String>{};
       for (final c in coursesJson) {
         final map = c as Map<String, dynamic>;
         final oldId = map['id'] as int;
@@ -1038,8 +1017,9 @@ class _TimetablePageState extends State<TimetablePage> {
 
       await _refresh();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(loc.t('导入成功', 'Import succeeded'))),
+        showExpressiveSnackBar(
+          context,
+          loc.t('导入成功', 'Import succeeded'),
         );
       }
     } catch (e) {
@@ -1063,9 +1043,12 @@ class _TimetablePageState extends State<TimetablePage> {
     final isAndroid = Platform.isAndroid;
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
-    final showDrawerButton = !isDesktop || isPortrait;
-    final scrollPhysics =
-        isAndroid ? const ClampingScrollPhysics() : const BouncingScrollPhysics();
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton =
+        (!isDesktop || isPortrait) && !(Platform.isAndroid && isTablet);
+    final scrollPhysics = isAndroid
+        ? const ClampingScrollPhysics()
+        : const BouncingScrollPhysics();
     final pagePhysics = const PageScrollPhysics().applyTo(scrollPhysics);
     final titleStyle = Theme.of(context)
         .textTheme
@@ -1083,7 +1066,15 @@ class _TimetablePageState extends State<TimetablePage> {
             ? Builder(
                 builder: (context) {
                   return IconButton(
-                    icon: const Icon(Icons.menu),
+                    icon: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 24,
+                        height: 24,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
                     onPressed: () {
                       ScaffoldState? scaffold = Scaffold.maybeOf(context);
                       if (scaffold != null && !scaffold.hasDrawer) {
@@ -1366,18 +1357,12 @@ class _TimetablePageState extends State<TimetablePage> {
                                     Expanded(
                                       child: SizedBox(
                                         width: gridWidth,
-                                        child: AnimatedSwitcher(
-                                          duration:
-                                              const Duration(milliseconds: 200),
-                                          switchInCurve: Curves.easeOutCubic,
-                                          switchOutCurve: Curves.easeInCubic,
-                                          child: _buildGridStack(
-                                            key: ValueKey(
-                                                '$_viewingProfileId-$week'),
-                                            targetWeek: week,
-                                            visibleDays: visibleDays,
-                                            cellWidth: cellWidth,
-                                          ),
+                                        child: _buildGridStack(
+                                          key: ValueKey(
+                                              '$_viewingProfileId-$week'),
+                                          targetWeek: week,
+                                          visibleDays: visibleDays,
+                                          cellWidth: cellWidth,
                                         ),
                                       ),
                                     ),
@@ -1485,7 +1470,7 @@ class _TimetablePageState extends State<TimetablePage> {
       child: Center(
         child: Text(
           loc.locale.languageCode == 'en'
-              ? '${[
+              ? [
                   'Jan',
                   'Feb',
                   'Mar',
@@ -1498,7 +1483,7 @@ class _TimetablePageState extends State<TimetablePage> {
                   'Oct',
                   'Nov',
                   'Dec'
-                ][targetMonth - 1]}'
+                ][targetMonth - 1]
               : '$targetMonth\n月',
           textAlign: TextAlign.center,
           style: TextStyle(
@@ -1519,7 +1504,8 @@ class _TimetablePageState extends State<TimetablePage> {
     final loc = Provider.of<LocaleProvider>(context);
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final firstWeekStart = DateTime(now.year, 3, 9);
+    // Assuming 2026 spring semester start date for date calculation
+    final firstWeekStart = DateTime(2026, 3, 2);
     final startOfTargetWeek =
         firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
     final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
@@ -1587,7 +1573,7 @@ class _TimetablePageState extends State<TimetablePage> {
       width: 40,
       child: Column(
         children: _periods.take(_maxVisiblePeriod).map((p) {
-          return Container(
+          return SizedBox(
             height: 60, // Height per period
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1631,15 +1617,13 @@ class _TimetablePageState extends State<TimetablePage> {
             final isToday = now.year == date.year &&
                 now.month == date.month &&
                 now.day == date.day;
-            if (!isToday) return const SizedBox.shrink();
-
             return Positioned(
               left: i * cellWidth,
               top: 0,
               bottom: 0,
               width: cellWidth,
               child: Container(
-                color: cs.primary.withOpacity(0.05),
+                color: cs.primary.withValues(alpha: (0.05 * 255).round()),
               ),
             );
           }),
@@ -1649,7 +1633,8 @@ class _TimetablePageState extends State<TimetablePage> {
               top: 0,
               bottom: 0,
               width: 1,
-              child: Container(color: Colors.grey.withOpacity(0.1)),
+              child: Container(
+                  color: Colors.grey.withValues(alpha: (0.1 * 255).round())),
             );
           }),
           ...List.generate(_maxVisiblePeriod, (i) {
@@ -1658,7 +1643,8 @@ class _TimetablePageState extends State<TimetablePage> {
               right: 0,
               top: i * cellHeight,
               height: 1,
-              child: Container(color: Colors.grey.withOpacity(0.1)),
+              child: Container(
+                  color: Colors.grey.withValues(alpha: (0.1 * 255).round())),
             );
           }),
           ..._items.where((e) => e.isWeekIncluded(targetWeek)).map((item) {
@@ -1682,11 +1668,9 @@ class _TimetablePageState extends State<TimetablePage> {
                 _expressiveColors[
                     item.courseId.hashCode.abs() % _expressiveColors.length];
             final cardColor = baseCardColor;
-            final cardRadius = 12.0;
+            const cardRadius = 12.0;
 
-            return AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOutCubic,
+            return Positioned(
               left: weekdayIndex * cellWidth,
               top: startPeriodIndex * cellHeight,
               width: cellWidth,
@@ -1766,14 +1750,16 @@ class _TimetablePageState extends State<TimetablePage> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 4, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.05),
+                                color: Colors.black
+                                    .withValues(alpha: (0.05 * 255).round()),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 item.weeks,
                                 style: TextStyle(
                                     fontSize: 8,
-                                    color: Colors.black.withOpacity(0.6),
+                                    color: Colors.black
+                                        .withValues(alpha: (0.6 * 255).round()),
                                     fontWeight: FontWeight.bold),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -1835,13 +1821,32 @@ class _TimetablePageState extends State<TimetablePage> {
 
   void _pushAttendanceAnimated({String? courseId, String? courseName}) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AttendancePage(
-          session: widget.session,
-          courseId: courseId,
-          courseName: courseName,
-          isStandalone: true,
-        ),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return AttendancePage(
+            session: widget.session,
+            courseId: courseId,
+            courseName: courseName,
+            isStandalone: true,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeOutCubic;
+          final tween =
+              Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          final offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: FadeTransition(
+              opacity: animation,
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 350),
       ),
     );
   }
@@ -1867,90 +1872,17 @@ class _TimetableCourseBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      builder: (context, t, child) {
-        return Opacity(
-          opacity: t,
-          child: Transform.scale(
-            scale: 0.98 + (0.02 * t),
-            child: child,
-          ),
-        );
-      },
-      child: Bounceable(
-        onTap: onTap,
-        onTapDown: onTapDown,
-        onLongPress: onLongPress,
-        behavior: HitTestBehavior.deferToChild,
-        child: Material(
-          elevation: 0,
-          color: color,
-          borderRadius: BorderRadius.circular(radius),
-          child: child,
-        ),
+    return Bounceable(
+      onTap: onTap,
+      onTapDown: onTapDown,
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.deferToChild,
+      child: Material(
+        elevation: 0,
+        color: color,
+        borderRadius: BorderRadius.circular(radius),
+        child: child,
       ),
     );
-  }
-}
-
-// Dashed border painter
-class _DashedBorderPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-  final double radius;
-
-  _DashedBorderPainter({
-    required this.color,
-    this.strokeWidth = 1.5,
-    this.radius = 12.0,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    final RRect rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      Radius.circular(radius),
-    );
-
-    final Path path = Path()..addRRect(rrect);
-    final Path dashPath = _dashPath(path, dashArray: [4, 4]);
-    canvas.drawPath(dashPath, paint);
-  }
-
-  Path _dashPath(Path source, {required List<double> dashArray}) {
-    final Path dest = Path();
-    for (final metric in source.computeMetrics()) {
-      double distance = 0.0;
-      bool draw = true;
-      int dashIndex = 0;
-      while (distance < metric.length) {
-        final double len = dashArray[dashIndex % dashArray.length];
-        if (draw) {
-          dest.addPath(
-            metric.extractPath(distance, distance + len),
-            Offset.zero,
-          );
-        }
-        distance += len;
-        draw = !draw;
-        dashIndex++;
-      }
-    }
-    return dest;
-  }
-
-  @override
-  bool shouldRepaint(_DashedBorderPainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.strokeWidth != strokeWidth ||
-        oldDelegate.radius != radius;
   }
 }
