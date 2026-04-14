@@ -1,15 +1,12 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../models/student.dart';
 import '../main.dart';
 import '../services/local_profiles.dart';
 import '../state/session.dart';
-import 'student_detail_page.dart';
 import '../widgets/expressive_ui.dart';
 
 class ClassStudentsPage extends StatefulWidget {
@@ -26,7 +23,6 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
   bool _loading = true;
   String _status = '';
   List<Student> _students = const [];
-  Map<String, String> _avatars = {};
 
   List<String> _myClasses = [];
   String _selectedClass = '';
@@ -89,27 +85,6 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         }
       });
 
-      final Map profilesRes = await widget.session.features
-          .hasFeature('profiles_list')
-          .then((has) async {
-        if (has) return await widget.session.features.listProfiles();
-        return await widget.session.cli?.call('profiles.list', {}) ??
-            {'ok': false};
-      });
-      final avatarsMap = <String, String>{};
-      if (profilesRes['ok'] == true) {
-        final items =
-            ((profilesRes['data'] ?? const {}) as Map)['items'] as List? ?? [];
-        for (final e in items) {
-          final m = (e as Map).cast<String, dynamic>();
-          final sNo = (m['student_no'] ?? '').toString().trim();
-          final av = (m['avatar'] ?? '').toString().trim();
-          if (sNo.isNotEmpty && av.isNotEmpty) {
-            avatarsMap[sNo] = av;
-          }
-        }
-      }
-
       final studentsRes = await studentsFuture;
 
       if (studentsRes['ok'] != true) {
@@ -148,7 +123,6 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         _myClasses = classes;
         _selectedClass = sel;
         _students = filtered;
-        _avatars = avatarsMap;
       });
 
       widget.onReady?.call();
@@ -338,6 +312,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
 
     if (res != 'ok') return;
 
+    if (!mounted) return;
     if (!await widget.session.features.hasFeature('students_insert')) {
       setState(() {
         _status = loc.t(
@@ -346,6 +321,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _status = '';
@@ -388,18 +364,8 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
             final cs = Theme.of(ctx).colorScheme;
-            final inputTheme = InputDecorationTheme(
-              filled: true,
-              fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(28),
-                borderSide: BorderSide.none,
-              ),
-              floatingLabelBehavior: FloatingLabelBehavior.never,
-            );
-
             return AlertDialog(
-              title: Text(loc.t('新增学生', 'Add Student')),
+              title: Text(loc.t('添加学生', 'Add Student')),
               content: SizedBox(
                 width: 460,
                 child: SingleChildScrollView(
@@ -756,7 +722,9 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
-    final showDrawerButton = !isDesktop || isPortrait;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton =
+        (!isDesktop || isPortrait) && !(Platform.isAndroid && isTablet);
 
     return Scaffold(
       appBar: AppBar(
@@ -800,8 +768,9 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                   if (_selectedClass.isNotEmpty) '__delete__',
                 ],
                 customLabelBuilder: (val) {
-                  if (val == '__delete__')
+                  if (val == '__delete__') {
                     return loc.t('删除当前班级', 'Delete Current Class');
+                  }
                   return val;
                 },
                 onSelected: (v) async {
@@ -915,7 +884,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                                                     bottom: 24),
                                                 decoration: BoxDecoration(
                                                   color: cs.onSurfaceVariant
-                                                      .withOpacity(0.4),
+                                                      .withValues(alpha: 0.4),
                                                   borderRadius:
                                                       BorderRadius.circular(2),
                                                 ),
@@ -936,8 +905,9 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                                                     'Edit Student Info')),
                                                 onTap: () {
                                                   Navigator.of(ctx).pop();
-                                                  if (!_loading)
+                                                  if (!_loading) {
                                                     _editStudent(s);
+                                                  }
                                                 },
                                               ),
                                               if (widget
@@ -953,8 +923,9 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                                                           color: cs.error)),
                                                   onTap: () {
                                                     Navigator.of(ctx).pop();
-                                                    if (!_loading)
+                                                    if (!_loading) {
                                                       _deleteStudent(s);
+                                                    }
                                                   },
                                                 ),
                                             ],
