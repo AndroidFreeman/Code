@@ -68,7 +68,9 @@ class _TodosPageState extends State<TodosPage> {
         _loading = false;
         _items = items;
         _folders = merged.isEmpty ? const ['默认'] : merged;
-        if (!hasActive) _activeFolder = '默认';
+        if (!hasActive) {
+          _activeFolder = '默认';
+        }
       });
       widget.onReady?.call();
     } catch (e) {
@@ -109,7 +111,9 @@ class _TodosPageState extends State<TodosPage> {
     );
     final name = ctrl.text.trim();
     ctrl.dispose();
-    if (res != true || name.isEmpty) return;
+    if (res != true || name.isEmpty) {
+      return;
+    }
     await _foldersStore.upsertFolder(name);
     if (!mounted) return;
     setState(() {
@@ -244,8 +248,9 @@ class _TodosPageState extends State<TodosPage> {
       await _store.deleteTodo(
           ownerProfileId: widget.session.profile.id, id: item.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(loc.t('已删除待办', 'Todo deleted'))),
+      showExpressiveSnackBar(
+        context,
+        loc.t('已删除待办', 'Todo deleted'),
       );
     } catch (e) {
       setState(() {
@@ -270,7 +275,9 @@ class _TodosPageState extends State<TodosPage> {
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
-    final showDrawerButton = !isDesktop || isPortrait;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton =
+        (!isDesktop || isPortrait) && !(Platform.isAndroid && isTablet);
 
     return Scaffold(
       appBar: AppBar(
@@ -371,7 +378,8 @@ class _TodosPageState extends State<TodosPage> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                            color: cs.errorContainer.withOpacity(0.85),
+                            color: cs.errorContainer
+                                .withValues(alpha: (0.85 * 255).round()),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Text(
@@ -386,10 +394,12 @@ class _TodosPageState extends State<TodosPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow.withOpacity(0.92),
+                  color: cs.surfaceContainerLow
+                      .withValues(alpha: (0.92 * 255).round()),
                   borderRadius: BorderRadius.circular(20),
-                  border:
-                      Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+                  border: Border.all(
+                      color: cs.outlineVariant
+                          .withValues(alpha: (0.35 * 255).round())),
                 ),
                 child: Row(
                   children: [
