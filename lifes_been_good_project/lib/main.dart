@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:animations/animations.dart';
 
@@ -216,7 +213,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
       ),
       useMaterial3: true,
       visualDensity: VisualDensity.comfortable,
-      fontFamily: isEn ? 'Fredoka' : 'NotoSansSC',
+      fontFamily: fontFamily,
       fontFamilyFallback: isEn ? const ['NotoSansSC'] : null,
     );
 
@@ -251,233 +248,233 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           Locale('en', 'US'),
         ],
         theme: baseTheme.copyWith(
-        textTheme: baseTheme.textTheme.apply(
-          bodyColor: const Color(0xFF1C1B1F),
-          displayColor: const Color(0xFF1C1B1F),
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF8F9FF),
-        appBarTheme: AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          foregroundColor: baseTheme.colorScheme.onSurface,
-          systemOverlayStyle: const SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark,
-            statusBarBrightness: Brightness.light,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: Brightness.dark,
+          textTheme: baseTheme.textTheme.apply(
+            bodyColor: const Color(0xFF1C1B1F),
+            displayColor: const Color(0xFF1C1B1F),
           ),
-        ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          color: baseTheme.colorScheme.surfaceContainerLow,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-            side: BorderSide.none,
-          ),
-          clipBehavior: Clip.antiAlias,
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          indicatorColor: baseTheme.colorScheme.secondaryContainer,
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-          ),
-        ),
-        navigationDrawerTheme: NavigationDrawerThemeData(
-          backgroundColor: Colors.white.withValues(alpha: 204),
-          indicatorColor: baseTheme.colorScheme.secondaryContainer,
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-          ),
-        ),
-        navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: Colors.white.withValues(alpha: 204),
-          indicatorColor: baseTheme.colorScheme.secondaryContainer,
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-          ),
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          elevation: 0,
-          hoverElevation: 0,
-          focusElevation: 0,
-          backgroundColor: baseTheme.colorScheme.primaryContainer,
-          foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
-          splashColor: baseTheme.colorScheme.primary.withValues(alpha: 26),
-          shape: const CircleBorder(),
-        ),
-        iconButtonTheme: IconButtonThemeData(
-          style: ButtonStyle(
-            backgroundColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.selected)) {
-                  return baseTheme.colorScheme.secondaryContainer;
-                }
-                return null;
-              },
-            ),
-            shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
-              (states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  );
-                }
-                return const CircleBorder();
-              },
+          scaffoldBackgroundColor: const Color(0xFFF8F9FF),
+          appBarTheme: AppBarTheme(
+            centerTitle: false,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: baseTheme.colorScheme.onSurface,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: Brightness.dark,
             ),
           ),
-        ),
-        segmentedButtonTheme: SegmentedButtonThemeData(
-          style: ButtonStyle(
-            shape: WidgetStatePropertyAll(
-              RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
+          cardTheme: CardThemeData(
+            elevation: 0,
+            color: baseTheme.colorScheme.surfaceContainerLow,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+              side: BorderSide.none,
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            indicatorColor: baseTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationDrawerTheme: NavigationDrawerThemeData(
+            backgroundColor: Colors.white.withValues(alpha: 204),
+            indicatorColor: baseTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationRailTheme: NavigationRailThemeData(
+            backgroundColor: Colors.white.withValues(alpha: 204),
+            indicatorColor: baseTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          floatingActionButtonTheme: FloatingActionButtonThemeData(
+            elevation: 0,
+            hoverElevation: 0,
+            focusElevation: 0,
+            backgroundColor: baseTheme.colorScheme.primaryContainer,
+            foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
+            splashColor: baseTheme.colorScheme.primary.withValues(alpha: 26),
+            shape: const CircleBorder(),
+          ),
+          iconButtonTheme: IconButtonThemeData(
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return baseTheme.colorScheme.secondaryContainer;
+                  }
+                  return null;
+                },
+              ),
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const CircleBorder();
+                },
               ),
             ),
-            side: WidgetStatePropertyAll(
-              BorderSide(
+          ),
+          segmentedButtonTheme: SegmentedButtonThemeData(
+            style: ButtonStyle(
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              side: WidgetStatePropertyAll(
+                BorderSide(
+                  color: baseTheme.colorScheme.outlineVariant
+                      .withValues(alpha: 128),
+                ),
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return baseTheme.colorScheme.primaryContainer;
+                  }
+                  return baseTheme.colorScheme.surfaceContainerLow;
+                },
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return baseTheme.colorScheme.onPrimaryContainer;
+                  }
+                  return baseTheme.colorScheme.onSurfaceVariant;
+                },
+              ),
+              overlayColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return baseTheme.colorScheme.primary.withValues(alpha: 26);
+                  }
+                  return null;
+                },
+              ),
+              textStyle: WidgetStatePropertyAll(
+                baseTheme.textTheme.labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              elevation: 0,
+              backgroundColor: baseTheme.colorScheme.primaryContainer,
+              foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
+              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 20),
+              surfaceTintColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            ).copyWith(
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const StadiumBorder();
+                },
+              ),
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              backgroundColor: baseTheme.colorScheme.surfaceContainerLow,
+              foregroundColor: baseTheme.colorScheme.onSurface,
+              side: BorderSide(
                 color:
                     baseTheme.colorScheme.outlineVariant.withValues(alpha: 128),
               ),
-            ),
-            backgroundColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.selected)) {
-                  return baseTheme.colorScheme.primaryContainer;
-                }
-                return baseTheme.colorScheme.surfaceContainerLow;
-              },
-            ),
-            foregroundColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.selected)) {
-                  return baseTheme.colorScheme.onPrimaryContainer;
-                }
-                return baseTheme.colorScheme.onSurfaceVariant;
-              },
-            ),
-            overlayColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return baseTheme.colorScheme.primary.withValues(alpha: 26);
-                }
-                return null;
-              },
-            ),
-            textStyle: WidgetStatePropertyAll(
-              baseTheme.textTheme.labelLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              elevation: 0,
+              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 16),
+              surfaceTintColor: Colors.transparent,
+            ).copyWith(
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const StadiumBorder();
+                },
+              ),
             ),
           ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            elevation: 0,
-            backgroundColor: baseTheme.colorScheme.primaryContainer,
-            foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
-            shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 20),
-            surfaceTintColor: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          ).copyWith(
-            shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
-              (states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  );
-                }
-                return const StadiumBorder();
-              },
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom().copyWith(
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const StadiumBorder();
+                },
+              ),
             ),
           ),
-        ),
-        outlinedButtonTheme: OutlinedButtonThemeData(
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            backgroundColor: baseTheme.colorScheme.surfaceContainerLow,
-            foregroundColor: baseTheme.colorScheme.onSurface,
-            side: BorderSide(
-              color:
-                  baseTheme.colorScheme.outlineVariant.withValues(alpha: 128),
-            ),
-            elevation: 0,
-            shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 16),
-            surfaceTintColor: Colors.transparent,
-          ).copyWith(
-            shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
-              (states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  );
-                }
-                return const StadiumBorder();
-              },
-            ),
-          ),
-        ),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom().copyWith(
-            shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
-              (states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  );
-                }
-                return const StadiumBorder();
-              },
-            ),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: baseTheme.colorScheme.surfaceContainer,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20),
-            borderSide:
-                BorderSide(color: baseTheme.colorScheme.primary, width: 2),
-          ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        ),
-        dialogTheme: DialogThemeData(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(extraExpressiveRadius)),
-          backgroundColor: baseTheme.colorScheme.surfaceContainerHighest,
-        ),
-        bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: baseTheme.colorScheme.surfaceContainerHighest,
-          shape: const RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.all(Radius.circular(extraExpressiveRadius)),
-          ),
-          clipBehavior: Clip.antiAlias,
-        ),
-        menuTheme: MenuThemeData(
-          style: MenuStyle(
-            shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: baseTheme.colorScheme.surfaceContainer,
+            border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(20),
-            )),
-            elevation: const WidgetStatePropertyAll(4),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide:
+                  BorderSide(color: baseTheme.colorScheme.primary, width: 2),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           ),
-        ),
+          dialogTheme: DialogThemeData(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(extraExpressiveRadius)),
+            backgroundColor: baseTheme.colorScheme.surfaceContainerHighest,
+          ),
+          bottomSheetTheme: BottomSheetThemeData(
+            backgroundColor: baseTheme.colorScheme.surfaceContainerHighest,
+            shape: const RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.all(Radius.circular(extraExpressiveRadius)),
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          menuTheme: MenuThemeData(
+            style: MenuStyle(
+              shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              )),
+              elevation: const WidgetStatePropertyAll(4),
+            ),
+          ),
         ),
         builder: (context, child) {
           return Container(
@@ -492,163 +489,163 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           );
         },
         darkTheme: darkTheme.copyWith(
-        scaffoldBackgroundColor: darkTheme.colorScheme.surface,
-        appBarTheme: AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          backgroundColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          foregroundColor: darkTheme.colorScheme.onSurface,
-          systemOverlayStyle: const SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.light,
-            statusBarBrightness: Brightness.dark,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: Brightness.light,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          color: darkTheme.colorScheme.surfaceContainerLow,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-            side: BorderSide.none,
-          ),
-          clipBehavior: Clip.antiAlias,
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          indicatorColor: darkTheme.colorScheme.secondaryContainer,
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-          ),
-        ),
-        navigationDrawerTheme: NavigationDrawerThemeData(
-          backgroundColor: Colors.black.withValues(alpha: 204),
-          indicatorColor: darkTheme.colorScheme.secondaryContainer,
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-          ),
-        ),
-        navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: Colors.black.withValues(alpha: 204),
-          indicatorColor: darkTheme.colorScheme.secondaryContainer,
-          indicatorShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(expressiveRadius),
-          ),
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          elevation: 1,
-          hoverElevation: 2,
-          focusElevation: 2,
-          backgroundColor: darkTheme.colorScheme.primaryContainer,
-          foregroundColor: darkTheme.colorScheme.onPrimaryContainer,
-          splashColor: darkTheme.colorScheme.primary.withValues(alpha: 26),
-          shape: const CircleBorder(),
-        ),
-        iconButtonTheme: IconButtonThemeData(
-          style: ButtonStyle(
-            backgroundColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.selected)) {
-                  return darkTheme.colorScheme.secondaryContainer;
-                }
-                return null;
-              },
-            ),
-            shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
-              (states) {
-                if (states.contains(WidgetState.pressed)) {
-                  return RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  );
-                }
-                return const CircleBorder();
-              },
+          scaffoldBackgroundColor: darkTheme.colorScheme.surface,
+          appBarTheme: AppBarTheme(
+            centerTitle: false,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: darkTheme.colorScheme.onSurface,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: Brightness.light,
             ),
           ),
-        ),
-        segmentedButtonTheme: SegmentedButtonThemeData(
-          style: ButtonStyle(
-            shape: WidgetStatePropertyAll(
-              RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
+          cardTheme: CardThemeData(
+            elevation: 0,
+            color: darkTheme.colorScheme.surfaceContainerLow,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+              side: BorderSide.none,
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            indicatorColor: darkTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationDrawerTheme: NavigationDrawerThemeData(
+            backgroundColor: Colors.black.withValues(alpha: 204),
+            indicatorColor: darkTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationRailTheme: NavigationRailThemeData(
+            backgroundColor: Colors.black.withValues(alpha: 204),
+            indicatorColor: darkTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          floatingActionButtonTheme: FloatingActionButtonThemeData(
+            elevation: 1,
+            hoverElevation: 2,
+            focusElevation: 2,
+            backgroundColor: darkTheme.colorScheme.primaryContainer,
+            foregroundColor: darkTheme.colorScheme.onPrimaryContainer,
+            splashColor: darkTheme.colorScheme.primary.withValues(alpha: 26),
+            shape: const CircleBorder(),
+          ),
+          iconButtonTheme: IconButtonThemeData(
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return darkTheme.colorScheme.secondaryContainer;
+                  }
+                  return null;
+                },
+              ),
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const CircleBorder();
+                },
               ),
             ),
-            side: WidgetStatePropertyAll(
-              BorderSide(
-                color:
-                    darkTheme.colorScheme.outlineVariant.withValues(alpha: 128),
+          ),
+          segmentedButtonTheme: SegmentedButtonThemeData(
+            style: ButtonStyle(
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              side: WidgetStatePropertyAll(
+                BorderSide(
+                  color: darkTheme.colorScheme.outlineVariant
+                      .withValues(alpha: 128),
+                ),
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return darkTheme.colorScheme.primaryContainer;
+                  }
+                  return darkTheme.colorScheme.surfaceContainerLow;
+                },
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return darkTheme.colorScheme.onPrimaryContainer;
+                  }
+                  return darkTheme.colorScheme.onSurfaceVariant;
+                },
               ),
             ),
-            backgroundColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.selected)) {
-                  return darkTheme.colorScheme.primaryContainer;
-                }
-                return darkTheme.colorScheme.surfaceContainerLow;
-              },
-            ),
-            foregroundColor: WidgetStateProperty.resolveWith(
-              (states) {
-                if (states.contains(WidgetState.selected)) {
-                  return darkTheme.colorScheme.onPrimaryContainer;
-                }
-                return darkTheme.colorScheme.onSurfaceVariant;
-              },
-            ),
           ),
-        ),
         ),
         home: PageTransitionSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (Widget child, Animation<double> primaryAnimation,
-            Animation<double> secondaryAnimation) {
-          return FadeThroughTransition(
-            animation: primaryAnimation,
-            secondaryAnimation: secondaryAnimation,
-            child: child,
-          );
-        },
-        child: _boot == null
-            ? BootstrapPage(
-                key: const ValueKey('boot'),
-                onReady: (r) {
-                  setState(() {
-                    _boot = r;
-                  });
-                  _tryAutoLogin(r);
-                },
-              )
-            : _session == null
-                ? LoginPage(
-                    key: const ValueKey('login'),
-                    dataDir: _boot!.dataDir,
-                    cliPath: _boot!.cliPath,
-                    nativeLibDir: _boot!.nativeLibDir,
-                    onLoggedIn: (s) {
-                      setState(() {
-                        _session = s;
-                      });
-                    },
-                  )
-                : ShellPage(
-                    key: const ValueKey('shell'),
-                    session: _session!,
-                    onLogout: () {
-                      final boot = _boot;
-                      if (boot != null) {
-                        LocalProfiles.clearAutoLogin(boot.dataDir);
-                      }
-                      setState(() {
-                        _session = null;
-                      });
-                    },
-                  ),
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (Widget child, Animation<double> primaryAnimation,
+              Animation<double> secondaryAnimation) {
+            return FadeThroughTransition(
+              animation: primaryAnimation,
+              secondaryAnimation: secondaryAnimation,
+              child: child,
+            );
+          },
+          child: _boot == null
+              ? BootstrapPage(
+                  key: const ValueKey('boot'),
+                  onReady: (r) {
+                    setState(() {
+                      _boot = r;
+                    });
+                    _tryAutoLogin(r);
+                  },
+                )
+              : _session == null
+                  ? LoginPage(
+                      key: const ValueKey('login'),
+                      dataDir: _boot!.dataDir,
+                      cliPath: _boot!.cliPath,
+                      nativeLibDir: _boot!.nativeLibDir,
+                      onLoggedIn: (s) {
+                        setState(() {
+                          _session = s;
+                        });
+                      },
+                    )
+                  : ShellPage(
+                      key: const ValueKey('shell'),
+                      session: _session!,
+                      onLogout: () {
+                        final boot = _boot;
+                        if (boot != null) {
+                          LocalProfiles.clearAutoLogin(boot.dataDir);
+                        }
+                        setState(() {
+                          _session = null;
+                        });
+                      },
+                    ),
         ),
       ),
     );
