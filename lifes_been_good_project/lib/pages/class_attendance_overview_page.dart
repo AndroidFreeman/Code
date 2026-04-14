@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
@@ -68,7 +69,8 @@ class _ClassAttendanceOverviewPageState
   }
 
   Future<List<Map<String, String>>> _readCsvRows(String filename) async {
-    final res = await widget.session.features.csvOp(action: 'read', file: filename);
+    final res =
+        await widget.session.features.csvOp(action: 'read', file: filename);
     if (res['ok'] != true) return [];
     final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
     return items.map((e) => (e as Map).cast<String, String>()).toList();
@@ -130,20 +132,25 @@ class _ClassAttendanceOverviewPageState
               .where((s) => s.classCode.trim() == sel)
               .toList(growable: false);
 
-      final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+      final now = DateTime.now();
+      bool isToday(String dateStr) {
+        final s = dateStr.trim();
+        if (s.isEmpty) return false;
+        try {
+          final dt = DateTime.parse(s).toLocal();
+          return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+        } catch (_) {
+          return s.startsWith(now.toIso8601String().substring(0, 10));
+        }
+      }
 
       final sessions = await _readCsvRows('attendance_sessions.csv');
-      final todaySessionIds = sessions
-          .where((s) => (s['started_at'] ?? '').startsWith(todayStr))
-          .map((s) => s['id'])
-          .toSet();
-
       final records = await _readCsvRows('attendance_records.csv');
 
       // Find all students on leave today across ALL sessions
       final allTodaySessionIds = sessions
-          .where((s) => (s['started_at'] ?? '').startsWith(todayStr))
-          .map((s) => s['id'])
+          .where((s) => isToday(s['started_at'] ?? ''))
+          .map((s) => (s['id'] ?? '').trim())
           .toSet();
 
       final studentsOnLeaveToday = <String>{};
@@ -156,15 +163,24 @@ class _ClassAttendanceOverviewPageState
         }
       }
 
-      // Keep only the latest record for each (session_id, student_id) in CURRENT sessions
+      // Keep only the latest record for each (course_id, student_id) in CURRENT sessions
+      final sessionToCourse = <String, String>{};
+      for (final s in sessions) {
+        if (isToday(s['started_at'] ?? '')) {
+          final sId = (s['id'] ?? '').trim();
+          sessionToCourse[sId] = (s['course_id'] ?? '').trim();
+        }
+      }
+
       final latestRecords = <String, Map<String, String>>{};
       for (final r in records) {
         final sessionId = (r['session_id'] ?? '').trim();
         final studentId = (r['student_id'] ?? '').trim();
         if (sessionId.isNotEmpty &&
             studentId.isNotEmpty &&
-            todaySessionIds.contains(sessionId)) {
-          latestRecords['$sessionId-$studentId'] = r;
+            sessionToCourse.containsKey(sessionId)) {
+          final courseId = sessionToCourse[sessionId];
+          latestRecords['$courseId-$studentId'] = r;
         }
       }
 
@@ -222,7 +238,9 @@ class _ClassAttendanceOverviewPageState
     final isDesktop = MediaQuery.of(context).size.width >= 1024;
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
-    final showDrawerButton = !isDesktop || isPortrait;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton =
+        (!isDesktop || isPortrait) && !(Platform.isAndroid && isTablet);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -586,8 +604,7 @@ class _ClassAttendanceOverviewPageState
                                                             label:
                                                                 loc.t('迟', 'L'),
                                                             value: r.late,
-                                                            color:
-                                                                cs.tertiary),
+                                                            color: cs.tertiary),
                                                         _MiniBadge(
                                                             label:
                                                                 loc.t('缺', 'A'),
@@ -597,8 +614,8 @@ class _ClassAttendanceOverviewPageState
                                                             label: loc.t(
                                                                 '假', 'Lv'),
                                                             value: r.leave,
-                                                            color: cs
-                                                                .secondary),
+                                                            color:
+                                                                cs.secondary),
                                                       ],
                                                     ),
                                                   ],
