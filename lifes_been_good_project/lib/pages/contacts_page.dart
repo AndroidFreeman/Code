@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,7 +9,6 @@ import '../services/local_profiles.dart';
 import '../state/session.dart';
 import '../main.dart';
 import 'profile_page.dart';
-import 'student_detail_page.dart';
 import '../widgets/expressive_ui.dart';
 
 class ContactsPage extends StatefulWidget {
@@ -109,7 +107,7 @@ class _ContactsPageState extends State<ContactsPage> {
 
     if (!already) {
       final id = 'ct_${DateTime.now().millisecondsSinceEpoch}';
-      final alias = '';
+      const alias = '';
       final phone = (p.phone).replaceAll(',', '');
       rows.add({
         'id': id,
@@ -208,11 +206,15 @@ class _ContactsPageState extends State<ContactsPage> {
                 if (p.id.isNotEmpty && p.id != ownerId) {
                   Navigator.of(ctx).pop(p);
                 } else if (p.id == ownerId) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                      content: Text(loc.t('不能添加自己', 'Cannot add yourself'))));
+                  showExpressiveSnackBar(
+                    ctx,
+                    loc.t('不能添加自己', 'Cannot add yourself'),
+                  );
                 } else {
-                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                      content: Text(loc.t('未找到该用户', 'User not found'))));
+                  showExpressiveSnackBar(
+                    ctx,
+                    loc.t('未找到该用户', 'User not found'),
+                  );
                 }
               },
               child: Text(loc.t('添加', 'Add')),
@@ -257,6 +259,7 @@ class _ContactsPageState extends State<ContactsPage> {
       }
 
       if (profilesRes['ok'] != true) {
+        if (!mounted) return;
         final loc = Provider.of<LocaleProvider>(context, listen: false);
         setState(() {
           _loading = false;
@@ -329,7 +332,9 @@ class _ContactsPageState extends State<ContactsPage> {
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
-    final showDrawerButton = !isDesktop || isPortrait;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton =
+        (!isDesktop || isPortrait) && !(Platform.isAndroid && isTablet);
 
     return Scaffold(
       appBar: AppBar(
@@ -394,16 +399,16 @@ class _ContactsPageState extends State<ContactsPage> {
                             return Container(
                               margin: const EdgeInsets.only(bottom: 12),
                               child: Bounceable(
-                                onTap: () =>
-                                    _showContactDetails(context, profile, cs, tt),
+                                onTap: () => _showContactDetails(
+                                    context, profile, cs, tt),
                                 child: Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     color: cs.surface,
                                     borderRadius: BorderRadius.circular(24),
                                     border: Border.all(
-                                        color:
-                                            cs.outlineVariant.withOpacity(0.5)),
+                                        color: cs.outlineVariant
+                                            .withValues(alpha: 0.5)),
                                   ),
                                   child: Row(
                                     children: [
@@ -460,17 +465,19 @@ class _ContactsPageState extends State<ContactsPage> {
                                         ),
                                       ),
                                       IconButton(
-                                        onPressed: () => _toggleContact(profile),
+                                        onPressed: () =>
+                                            _toggleContact(profile),
                                         icon: Icon(
-                                          _myContactProfileIds.contains(profile.id)
+                                          _myContactProfileIds
+                                                  .contains(profile.id)
                                               ? Icons.star_rounded
                                               : Icons.star_outline_rounded,
                                         ),
-                                        color:
-                                            _myContactProfileIds.contains(profile.id)
-                                                ? cs.primary
-                                                : cs.onSurfaceVariant
-                                                    .withOpacity(0.7),
+                                        color: _myContactProfileIds
+                                                .contains(profile.id)
+                                            ? cs.primary
+                                            : cs.onSurfaceVariant
+                                                .withValues(alpha: 0.7),
                                         tooltip: _myContactProfileIds
                                                 .contains(profile.id)
                                             ? loc.t('从通讯录移除',
@@ -480,7 +487,7 @@ class _ContactsPageState extends State<ContactsPage> {
                                       ),
                                       Icon(Icons.chevron_right_rounded,
                                           color: cs.onSurfaceVariant
-                                              .withOpacity(0.5)),
+                                              .withValues(alpha: 0.5)),
                                     ],
                                   ),
                                 ),
@@ -565,13 +572,13 @@ class _ContactsPageState extends State<ContactsPage> {
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
             shape: const CircleBorder(),
+            tooltip: loc.t('菜单', 'Menu'),
             child: AnimatedRotation(
               turns: _showFabMenu ? 0.125 : 0, // Rotate 45 degrees
               duration: const Duration(milliseconds: 500),
               curve: Curves.easeOutCubic,
               child: const Icon(Icons.add),
             ),
-            tooltip: loc.t('菜单', 'Menu'),
           ),
         ],
       ),
