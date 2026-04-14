@@ -1,8 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
@@ -12,6 +8,7 @@ import '../models/student.dart';
 import '../state/session.dart';
 import 'attendance_page.dart';
 import 'course_detail_page.dart';
+import '../widgets/expressive_ui.dart';
 
 class CoursesPage extends StatefulWidget {
   final Session session;
@@ -40,7 +37,8 @@ class _CoursesPageState extends State<CoursesPage> {
   }
 
   Future<List<Map<String, String>>> _readCsvRows(String filename) async {
-    final res = await widget.session.features.csvOp(action: 'read', file: filename);
+    final res =
+        await widget.session.features.csvOp(action: 'read', file: filename);
     if (res['ok'] != true) return [];
     final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
     return items.map((e) => (e as Map).cast<String, String>()).toList();
@@ -89,54 +87,6 @@ class _CoursesPageState extends State<CoursesPage> {
       map.putIfAbsent(courseId, () => <String>{}).add(studentId);
     }
     return map;
-  }
-
-  Future<void> _joinCourse(Course c, String studentId) async {
-    try {
-      setState(() {
-        _loading = true;
-      });
-      final rows = await _readCsvRows('course_members.csv');
-      final headers = ['id', 'course_id', 'student_id'];
-      final exists = rows
-          .any((r) => r['course_id'] == c.id && r['student_id'] == studentId);
-      if (!exists) {
-        final newId = 'cm_${DateTime.now().millisecondsSinceEpoch}';
-        rows.add({
-          'id': newId,
-          'course_id': c.id,
-          'student_id': studentId,
-        });
-        await _writeCsv('course_members.csv', headers, rows);
-      }
-      await _refresh();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _status = e.toString();
-      });
-    }
-  }
-
-  Future<void> _leaveCourse(Course c, String studentId) async {
-    try {
-      setState(() {
-        _loading = true;
-      });
-      final rows = await _readCsvRows('course_members.csv');
-      final headers = ['id', 'course_id', 'student_id'];
-      rows.removeWhere(
-          (r) => r['course_id'] == c.id && r['student_id'] == studentId);
-      await _writeCsv('course_members.csv', headers, rows);
-      await _refresh();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _status = e.toString();
-      });
-    }
   }
 
   List<Course> _filterVisibleCourses({
@@ -288,10 +238,10 @@ class _CoursesPageState extends State<CoursesPage> {
     if (res != 'ok') return;
     if (name.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      showExpressiveSnackBar(
         context,
-      ).showSnackBar(
-          SnackBar(content: Text(loc.t('请输入课程名', 'Please enter course name'))));
+        loc.t('请输入课程名', 'Please enter course name'),
+      );
       return;
     }
 
