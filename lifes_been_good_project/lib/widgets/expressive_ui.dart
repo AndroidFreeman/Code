@@ -235,3 +235,24 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
     );
   }
 }
+
+void showExpressiveSnackBar(BuildContext context, String message, {Duration? duration}) {
+  final cs = Theme.of(context).colorScheme;
+  ScaffoldMessenger.of(context).clearSnackBars();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message, style: TextStyle(color: cs.onPrimaryContainer)),
+      duration: duration ?? const Duration(seconds: 3),
+      behavior: SnackBarBehavior.floating,
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      backgroundColor: cs.primaryContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      // Standard SnackBar doesn't support easy scale/fade without a lot of boilerplate.
+      // But floating behavior with large margins and rounded corners already feels "pop-like".
+      // To get a true "pop/fade", we'd need a custom overlay or animation.
+      // Standard SnackBar behavior: floating with slide is usually enough if it's styled.
+    ),
+  );
+}
