@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/course.dart';
@@ -102,17 +101,19 @@ class _AttendancePageState extends State<AttendancePage> {
       _status = '';
     });
 
-    try {
-      // 1. Get classes
-      if (widget.session.isTeacher) {
-        _myClasses = await LocalProfiles.getTeacherClasses(
-          widget.session.dataDir,
-          widget.session.profile.id,
-        );
-      } else {
-        _myClasses = [widget.session.profile.classCode.trim()];
-      }
+    // Ensure data schema is up-to-date
+    // Removed old schema update methods
 
+    if (widget.session.isTeacher) {
+      _myClasses = await LocalProfiles.getTeacherClasses(
+        widget.session.dataDir,
+        widget.session.profile.id,
+      );
+    } else {
+      _myClasses = [widget.session.profile.classCode.trim()];
+    }
+
+    try {
       if (_myClasses.isNotEmpty && _selectedClass == null) {
         _selectedClass = _myClasses.first;
       }
@@ -258,7 +259,21 @@ class _AttendancePageState extends State<AttendancePage> {
           final sContent = await sessionsFile.readAsString();
           final sLines =
               sContent.split('\n').where((l) => l.trim().isNotEmpty).toList();
-          final todayStr = DateTime.now().toIso8601String().substring(0, 10);
+
+          final now = DateTime.now();
+          bool isToday(String dateStr) {
+            final s = dateStr.trim();
+            if (s.isEmpty) return false;
+            try {
+              final dt = DateTime.parse(s).toLocal();
+              return dt.year == now.year &&
+                  dt.month == now.month &&
+                  dt.day == now.day;
+            } catch (_) {
+              return s.startsWith(now.toIso8601String().substring(0, 10));
+            }
+          }
+
           final todaySessionIds = <String>{};
 
           if (sLines.length > 1) {
@@ -267,13 +282,11 @@ class _AttendancePageState extends State<AttendancePage> {
               if (parts.length >= 4) {
                 final id = parts[0];
                 final cid = parts[1];
-                final creator = parts[2];
                 final startedAt = parts[3];
 
-                if (startedAt.startsWith(todayStr)) {
+                if (isToday(startedAt)) {
                   todaySessionIds.add(id);
-                  if (cid == _selectedCourse!.id &&
-                      creator == widget.session.profile.id) {
+                  if (cid == _selectedCourse!.id) {
                     restoredSessionId = id;
                   }
                 }
@@ -355,6 +368,7 @@ class _AttendancePageState extends State<AttendancePage> {
           _loading = false;
         });
       } else {
+        if (!mounted) return;
         final loc = Provider.of<LocaleProvider>(context, listen: false);
         throw res['error']?['message'] ??
             loc.t('启动点名失败', 'Failed to start attendance');
@@ -366,19 +380,6 @@ class _AttendancePageState extends State<AttendancePage> {
         _status = e.toString();
       });
       widget.onReady?.call();
-    }
-  }
-
-  Future<void> _updateMark(Student s, String status) async {
-    if (_sessionId == null && _selectedCourse != null) {
-      await _startSession();
-    }
-
-    setState(() {
-      _marking[s.id] = status;
-    });
-    if (_sessionId != null && status.isNotEmpty) {
-      await _submitMark(s, status);
     }
   }
 
@@ -426,12 +427,10 @@ class _AttendancePageState extends State<AttendancePage> {
     if (mounted) {
       setState(() => _batchSubmitting = false);
       final loc = Provider.of<LocaleProvider>(context, listen: false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(loc.t('已批量提交全班为：', 'Batch submitted class as: ') +
-              _statusLabel(_batchStatus, loc)),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showExpressiveSnackBar(
+        context,
+        loc.t('已批量提交全班为：', 'Batch submitted class as: ') +
+            _statusLabel(_batchStatus, loc),
       );
     }
   }
@@ -463,7 +462,7 @@ class _AttendancePageState extends State<AttendancePage> {
         height: 24,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
         ),
       ),
     );
@@ -472,7 +471,10 @@ class _AttendancePageState extends State<AttendancePage> {
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
     final isPushed = widget.isStandalone;
-    final showDrawerButton = (!isDesktop || isPortrait) && !isPushed;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton = (!isDesktop || isPortrait) &&
+        !isPushed &&
+        !(Platform.isAndroid && isTablet);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -932,20 +934,5 @@ class _AttendancePageState extends State<AttendancePage> {
           style: TextStyle(
               color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
     );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'present':
-        return Colors.green;
-      case 'late':
-        return Colors.orange;
-      case 'absent':
-        return Colors.red;
-      case 'leave':
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
   }
 }
