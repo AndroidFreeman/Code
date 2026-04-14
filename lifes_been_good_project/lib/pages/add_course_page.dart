@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/course.dart';
 import '../models/timetable_item.dart';
 import '../main.dart';
+import '../widgets/expressive_ui.dart';
 
 class AddCoursePage extends StatefulWidget {
   final Course? initialCourse;
@@ -32,11 +33,11 @@ class _AddCoursePageState extends State<AddCoursePage> {
   final _notesCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _teacherCtrl = TextEditingController();
-  
+
   Color _selectedColor = const Color(0xFFBAE1FF); // Default light blue
-  
+
   // Time slots (one course can have multiple sessions)
-  List<Map<String, dynamic>> _timeSlots = [];
+  final List<Map<String, dynamic>> _timeSlots = [];
 
   final List<Color> _presetColors = [
     const Color(0xFFFFB3BA), // Light Red
@@ -62,7 +63,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
         _selectedColor = Color(int.parse(widget.initialCourse!.color!));
       }
     }
-    
+
     if (widget.initialItem != null) {
       _locationCtrl.text = widget.initialItem!.location;
       // In a real WakeUp app, we'd load all time slots for this course
@@ -180,12 +181,18 @@ class _AddCoursePageState extends State<AddCoursePage> {
             ),
           TextButton(
             onPressed: () {
-              // TODO: Save logic
+              if (_courseNameCtrl.text.isEmpty) {
+                showExpressiveSnackBar(
+                  context,
+                  loc.t('请输入课程名', 'Please enter course name'),
+                );
+                return;
+              }
               final result = {
                 'courseName': _courseNameCtrl.text,
                 'credits': _creditsCtrl.text,
                 'notes': _notesCtrl.text,
-                'color': _selectedColor.value.toString(),
+                'color': _selectedColor.toARGB32().toString(),
                 'location': _locationCtrl.text,
                 'timeSlots': _timeSlots,
               };
@@ -221,16 +228,18 @@ class _AddCoursePageState extends State<AddCoursePage> {
                     children: suggestions.map((s) {
                       return ActionChip(
                         label: Text(s),
-                        onPressed: () => setState(() => _courseNameCtrl.text = s),
+                        onPressed: () =>
+                            setState(() => _courseNameCtrl.text = s),
                         backgroundColor: Colors.grey[100],
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
                       );
                     }).toList(),
                   ),
                 ],
               ),
             ),
-            
+
             // Color Picker
             _buildSection(
               icon: Icons.edit_outlined,
@@ -240,7 +249,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
                     style: const TextStyle(color: Colors.blue)),
               ),
             ),
-            
+
             // Credits
             _buildSection(
               icon: Icons.flag_outlined,
@@ -252,7 +261,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
                 ),
               ),
             ),
-            
+
             // Notes
             _buildSection(
               icon: Icons.sticky_note_2_outlined,
@@ -264,9 +273,9 @@ class _AddCoursePageState extends State<AddCoursePage> {
                 ),
               ),
             ),
-            
+
             const Divider(),
-            
+
             // Time Slots Section
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -282,13 +291,13 @@ class _AddCoursePageState extends State<AddCoursePage> {
                 ],
               ),
             ),
-            
+
             ..._timeSlots.asMap().entries.map((entry) {
               final i = entry.key;
               final slot = entry.value;
               return _buildTimeSlot(i, slot);
-            }).toList(),
-            
+            }),
+
             const SizedBox(height: 20),
             Center(
               child: IconButton(
@@ -302,7 +311,8 @@ class _AddCoursePageState extends State<AddCoursePage> {
                     });
                   });
                 },
-                icon: const Icon(Icons.add_circle, color: Colors.blue, size: 40),
+                icon:
+                    const Icon(Icons.add_circle, color: Colors.blue, size: 40),
               ),
             ),
           ],
@@ -341,7 +351,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
                   style: const TextStyle(fontSize: 16)),
             ),
           ),
-          
+
           // Time Picker (Weekday & Periods)
           _buildSection(
             icon: Icons.access_time,
@@ -364,7 +374,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
               ],
             ),
           ),
-          
+
           // Teacher (Optional)
           _buildSection(
             icon: Icons.person_outline,
@@ -376,7 +386,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
               ),
             ),
           ),
-          
+
           // Location
           _buildSection(
             icon: Icons.door_front_door_outlined,
@@ -397,7 +407,7 @@ class _AddCoursePageState extends State<AddCoursePage> {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
     final currentWeeks = _timeSlots[index]['weeks'] as String;
     final selectedWeeks = <int>{};
-    
+
     // Parse existing weeks string "1-20" or "1,2,3"
     if (currentWeeks.contains('-')) {
       final parts = currentWeeks.split('-');
@@ -447,17 +457,25 @@ class _AddCoursePageState extends State<AddCoursePage> {
                     return GestureDetector(
                       onTap: () {
                         setLocal(() {
-                          if (isSelected) selectedWeeks.remove(w);
-                          else selectedWeeks.add(w);
+                          if (isSelected) {
+                            selectedWeeks.remove(w);
+                          } else {
+                            selectedWeeks.add(w);
+                          }
                         });
                       },
                       child: Container(
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.blue[400] : Colors.grey[200],
+                          color:
+                              isSelected ? Colors.blue[400] : Colors.grey[200],
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Center(
-                          child: Text('$w', style: TextStyle(color: isSelected ? Colors.white : Colors.black)),
+                          child: Text('$w',
+                              style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.black)),
                         ),
                       ),
                     );
@@ -467,18 +485,12 @@ class _AddCoursePageState extends State<AddCoursePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildShortcut(setLocal,
-                        loc.t('全周', 'All weeks'), selectedWeeks, (w) => true),
-                    _buildShortcut(
-                        setLocal,
-                        loc.t('单周', 'Odd weeks'),
-                        selectedWeeks,
-                        (w) => w % 2 != 0),
-                    _buildShortcut(
-                        setLocal,
-                        loc.t('双周', 'Even weeks'),
-                        selectedWeeks,
-                        (w) => w % 2 == 0),
+                    _buildShortcut(setLocal, loc.t('全周', 'All weeks'),
+                        selectedWeeks, (w) => true),
+                    _buildShortcut(setLocal, loc.t('单周', 'Odd weeks'),
+                        selectedWeeks, (w) => w % 2 != 0),
+                    _buildShortcut(setLocal, loc.t('双周', 'Even weeks'),
+                        selectedWeeks, (w) => w % 2 == 0),
                   ],
                 ),
               ],
@@ -498,14 +510,14 @@ class _AddCoursePageState extends State<AddCoursePage> {
                 // Simple formatting: if consecutive, use 1-20, else 1,3,5
                 bool consecutive = true;
                 for (var i = 0; i < list.length - 1; i++) {
-                  if (list[i+1] != list[i] + 1) {
+                  if (list[i + 1] != list[i] + 1) {
                     consecutive = false;
                     break;
                   }
                 }
-                final formatted = (consecutive && list.length > 1) 
-                  ? '${list.first}-${list.last}' 
-                  : list.join(',');
+                final formatted = (consecutive && list.length > 1)
+                    ? '${list.first}-${list.last}'
+                    : list.join(',');
                 Navigator.of(ctx).pop(formatted);
               },
               child: Text(loc.t('确定', 'OK')),
@@ -522,7 +534,8 @@ class _AddCoursePageState extends State<AddCoursePage> {
     }
   }
 
-  Widget _buildShortcut(StateSetter setLocal, String label, Set<int> selected, bool Function(int) filter) {
+  Widget _buildShortcut(StateSetter setLocal, String label, Set<int> selected,
+      bool Function(int) filter) {
     return GestureDetector(
       onTap: () {
         setLocal(() {
@@ -569,9 +582,12 @@ class _AddCoursePageState extends State<AddCoursePage> {
             width: 400,
             child: Row(
               children: [
-                _buildPicker(weekdays, selectedWeekday - 1, (val) => setLocal(() => selectedWeekday = val + 1)),
-                _buildPicker(sections, startSection - 1, (val) => setLocal(() => startSection = val + 1)),
-                _buildPicker(sections, endSection - 1, (val) => setLocal(() => endSection = val + 1)),
+                _buildPicker(weekdays, selectedWeekday - 1,
+                    (val) => setLocal(() => selectedWeekday = val + 1)),
+                _buildPicker(sections, startSection - 1,
+                    (val) => setLocal(() => startSection = val + 1)),
+                _buildPicker(sections, endSection - 1,
+                    (val) => setLocal(() => endSection = val + 1)),
               ],
             ),
           ),
@@ -582,12 +598,18 @@ class _AddCoursePageState extends State<AddCoursePage> {
             TextButton(
               onPressed: () {
                 if (startSection > endSection) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-                      content: Text(loc.t('开始节次不能大于结束节次',
-                          'Start period cannot be after end period'))));
+                  showExpressiveSnackBar(
+                    ctx,
+                    loc.t('开始节次不能大于结束节次',
+                        'Start period cannot be after end period'),
+                  );
                   return;
                 }
-                Navigator.of(ctx).pop({'weekday': selectedWeekday, 'start': startSection, 'end': endSection});
+                Navigator.of(ctx).pop({
+                  'weekday': selectedWeekday,
+                  'start': startSection,
+                  'end': endSection
+                });
               },
               child: Text(loc.t('确定', 'OK')),
             ),
@@ -605,28 +627,34 @@ class _AddCoursePageState extends State<AddCoursePage> {
     }
   }
 
-  Widget _buildPicker(List<String> items, int initialIndex, ValueChanged<int> onChanged) {
+  Widget _buildPicker(
+      List<String> items, int initialIndex, ValueChanged<int> onChanged) {
     // Check if we are on desktop
-    final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
     if (isDesktop) {
       return Expanded(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: ListView.builder(
-             itemCount: items.length,
-             shrinkWrap: true,
-             itemBuilder: (context, index) => InkWell(
+            itemCount: items.length,
+            shrinkWrap: true,
+            itemBuilder: (context, index) => InkWell(
               onTap: () => onChanged(index),
               child: Container(
                 height: 40,
-                color: initialIndex == index ? Colors.blue.withOpacity(0.1) : null,
+                color: initialIndex == index
+                    ? Colors.blue.withValues(alpha: 0.1)
+                    : null,
                 child: Center(
                   child: Text(
                     items[index],
                     style: TextStyle(
                       color: initialIndex == index ? Colors.blue : Colors.black,
-                      fontWeight: initialIndex == index ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: initialIndex == index
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
                   ),
                 ),
