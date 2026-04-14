@@ -1,8 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../main.dart';
@@ -185,85 +181,84 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
             final cs = Theme.of(ctx).colorScheme;
-            final inputTheme = InputDecoration(
+            final inputDecoration = InputDecoration(
               filled: true,
-              fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
+              fillColor: cs.surfaceContainerLow,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(24),
                 borderSide: BorderSide.none,
               ),
-              floatingLabelBehavior: FloatingLabelBehavior.never,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide:
+                    BorderSide(color: cs.outlineVariant.withValues(alpha: 128)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide(color: cs.primary, width: 1.5),
+              ),
+              labelStyle: TextStyle(color: cs.onSurfaceVariant),
             );
 
             return AlertDialog(
               title: Text(loc.t('编辑学生信息', 'Edit Student Info')),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28)),
               content: SizedBox(
                 width: 460,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       TextField(
                         controller: noCtrl,
-                        decoration: inputTheme.copyWith(
+                        decoration: inputDecoration.copyWith(
                             labelText: loc.t('学号', 'Student ID')),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       TextField(
                         controller: nameCtrl,
-                        decoration:
-                            inputTheme.copyWith(labelText: loc.t('姓名', 'Name')),
+                        decoration: inputDecoration.copyWith(
+                            labelText: loc.t('姓名', 'Name')),
                       ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: (allClasses.contains(selectedClass) ||
-                                selectedClass.isEmpty)
-                            ? selectedClass
-                            : null,
-                        decoration: inputTheme.copyWith(
-                            labelText: loc.t('班级', 'Class')),
-                        items: [
-                          DropdownMenuItem(
-                            value: '',
-                            child: Text(loc.t('（不指定）', '(Not specified)')),
-                          ),
-                          ...allClasses.map(
-                              (c) => DropdownMenuItem(value: c, child: Text(c)))
-                        ],
-                        onChanged: (v) {
+                      const SizedBox(height: 16),
+                      ExpressiveSelector(
+                        label: loc.t('班级', 'Class'),
+                        value: selectedClass.isEmpty
+                            ? loc.t('（不指定）', '(Not specified)')
+                            : selectedClass,
+                        items: ['', ...allClasses],
+                        customLabelBuilder: (v) =>
+                            v.isEmpty ? loc.t('（不指定）', '(Not specified)') : v,
+                        onSelected: (v) {
                           setLocal(() {
-                            selectedClass = v ?? '';
+                            selectedClass = v;
                           });
                         },
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       TextField(
                         controller: phoneCtrl,
-                        decoration: inputTheme.copyWith(
+                        decoration: inputDecoration.copyWith(
                             labelText: loc.t('电话', 'Phone')),
                       ),
-                      const SizedBox(height: 12),
-                      if (widget.session.isTeacher)
-                        DropdownButtonFormField<String>(
+                      if (widget.session.isTeacher) ...[
+                        const SizedBox(height: 16),
+                        ExpressiveSelector(
+                          label: loc.t('职位', 'Position'),
                           value: pos.isEmpty ? '' : pos,
-                          decoration: inputTheme.copyWith(
-                              labelText: loc.t('职位', 'Position')),
-                          items: [
-                            DropdownMenuItem(
-                              value: '',
-                              child: Text(loc.t('普通学生', 'Regular Student')),
-                            ),
-                            DropdownMenuItem(
-                              value: 'cadre',
-                              child: Text(loc.t('班干部', 'Class Cadre')),
-                            ),
-                          ],
-                          onChanged: (v) {
+                          items: const ['', 'cadre'],
+                          customLabelBuilder: (v) => _positionLabel(v, loc),
+                          onSelected: (v) {
                             setLocal(() {
-                              pos = v ?? '';
+                              pos = v;
                             });
                           },
                         ),
+                      ],
                     ],
                   ),
                 ),
@@ -275,6 +270,12 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(ctx).pop('ok'),
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                  ),
                   child: Text(loc.t('保存', 'Save')),
                 ),
               ],
@@ -615,13 +616,15 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                             color: cs.surfaceContainerLow,
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
-                                color: cs.outlineVariant.withOpacity(0.5)),
+                                color:
+                                    cs.outlineVariant.withValues(alpha: 0.5)),
                           ),
                           child: Column(
                             children: [
                               Icon(Icons.inbox_outlined,
                                   size: 48,
-                                  color: cs.onSurfaceVariant.withOpacity(0.5)),
+                                  color: cs.onSurfaceVariant
+                                      .withValues(alpha: 0.5)),
                               const SizedBox(height: 16),
                               Text(loc.t('暂无记录', 'No Records'),
                                   style: TextStyle(color: cs.onSurfaceVariant)),
@@ -661,15 +664,16 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                   color: cs.surface,
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                      color:
-                                          cs.outlineVariant.withOpacity(0.5)),
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 0.5)),
                                 ),
                                 child: Row(
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
+                                        color:
+                                            statusColor.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Icon(
@@ -705,7 +709,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                     _buildBadge(
                                         context,
                                         _statusLabel(status, loc),
-                                        statusColor.withOpacity(0.1),
+                                        statusColor.withValues(alpha: 0.1),
                                         statusColor),
                                   ],
                                 ),
@@ -748,7 +752,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
         ),
         child: Column(
           children: [
