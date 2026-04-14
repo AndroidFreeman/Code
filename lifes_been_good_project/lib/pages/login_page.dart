@@ -35,6 +35,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   String _role = 'student';
   bool _isRegister = false;
+  bool _obscurePassword = true;
 
   final _accountCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
@@ -269,10 +270,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       constraints: const BoxConstraints(maxWidth: 400),
       child: Card(
         elevation: 0,
-        color: cs.surface.withOpacity(0.9),
+        color: cs.surface.withValues(alpha: 0.9),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(28),
-          side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
+          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
@@ -311,7 +312,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     hintText: _t(isEn, '请输入${_accountLabel(isEn)}',
                         'Enter ${_accountLabel(isEn)}'),
                     filled: true,
-                    fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                    fillColor:
+                        cs.surfaceContainerHighest.withValues(alpha: 0.3),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(28),
                       borderSide: BorderSide.none,
@@ -328,7 +330,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       labelText: _t(isEn, '姓名', 'Name'),
                       hintText: _t(isEn, '请输入真实姓名', 'Enter your name'),
                       filled: true,
-                      fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                      fillColor:
+                          cs.surfaceContainerHighest.withValues(alpha: 0.3),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(28),
                         borderSide: BorderSide.none,
@@ -343,7 +346,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         prefixIcon: const Icon(Icons.class_outlined),
                         labelText: _t(isEn, '班级', 'Class'),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                        fillColor:
+                            cs.surfaceContainerHighest.withValues(alpha: 0.3),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28),
                           borderSide: BorderSide.none,
@@ -367,7 +371,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                       labelText: _t(isEn, '电话', 'Phone'),
                       hintText: _t(isEn, '请输入联系电话', 'Enter your phone number'),
                       filled: true,
-                      fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                      fillColor:
+                          cs.surfaceContainerHighest.withValues(alpha: 0.3),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(28),
                         borderSide: BorderSide.none,
@@ -379,13 +384,24 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 TextField(
                   controller: _passwordCtrl,
                   enabled: !_loading,
-                  obscureText: true,
+                  obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
                     labelText: _t(isEn, '密码', 'Password'),
                     hintText: _t(isEn, '请输入密码', 'Enter password'),
                     filled: true,
-                    fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                    fillColor:
+                        cs.surfaceContainerHighest.withValues(alpha: 0.3),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(28),
                       borderSide: BorderSide.none,
@@ -399,7 +415,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: cs.errorContainer.withOpacity(0.5),
+                      color: cs.errorContainer.withValues(alpha: 0.5),
                       borderRadius: BorderRadius.circular(28),
                     ),
                     child: Text(
@@ -456,9 +472,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  cs.primaryContainer.withOpacity(0.4),
+                  cs.primaryContainer.withValues(alpha: 0.4),
                   cs.surface,
-                  cs.tertiaryContainer.withOpacity(0.2),
+                  cs.tertiaryContainer.withValues(alpha: 0.2),
                 ],
               ),
             ),
@@ -476,9 +492,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: cs.surface.withOpacity(0.8),
+                  color: cs.surface.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+                  border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.5)),
                 ),
                 child: Row(
                   children: [
@@ -487,7 +504,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                     Text(
                       isEn ? 'English' : '中文',
                       style: tt.labelLarge?.copyWith(
-                        color: cs.onSurface,
+                        color: cs.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -496,39 +513,36 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               ),
             ),
           ),
-          // Decorative circles
-          Positioned(
-            top: -100,
-            right: -100,
-            child: IgnorePointer(
-              child: Container(
-                width: 400,
-                height: 400,
-                decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(100),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -50,
-            left: -50,
-            child: IgnorePointer(
-              child: Container(
-                width: 300,
-                height: 300,
-                decoration: BoxDecoration(
-                  color: cs.secondary.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(80),
-                ),
-              ),
-            ),
-          ),
+          // Content
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: card,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App Logo/Icon
+                  Container(
+                    width: 80,
+                    height: 80,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withValues(alpha: 0.4),
+                      shape: BoxShape.circle,
+                    ),
+                    child:
+                        Icon(Icons.school_rounded, size: 40, color: cs.primary),
+                  ),
+                  card,
+                  const SizedBox(height: 48),
+                  // Version info or footer
+                  Text(
+                    "Life's Been Good System v1.0",
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.outline.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
