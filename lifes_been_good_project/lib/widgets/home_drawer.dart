@@ -178,37 +178,39 @@ class HomeDrawer extends StatelessWidget {
                           ),
                           child: Row(
                             children: [
-                              Container(
+                              SizedBox(
                                 width: 44,
                                 height: 44,
-                                decoration: BoxDecoration(
-                                  color: cs.primaryContainer,
-                                  borderRadius: BorderRadius.circular(14),
-                                  image: session.profile.avatar.isNotEmpty &&
-                                          File(session.profile.avatar)
-                                              .existsSync()
-                                      ? DecorationImage(
-                                          image: FileImage(
-                                            File(session.profile.avatar),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: cs.primaryContainer,
+                                    borderRadius: BorderRadius.circular(14),
+                                    image: session.profile.avatar.isNotEmpty &&
+                                            File(session.profile.avatar)
+                                                .existsSync()
+                                        ? DecorationImage(
+                                            image: FileImage(
+                                              File(session.profile.avatar),
+                                            ),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: (session.profile.avatar.isEmpty ||
+                                          !File(session.profile.avatar)
+                                              .existsSync())
+                                      ? Text(
+                                          displayName
+                                              .substring(0, 1)
+                                              .toUpperCase(),
+                                          style: tt.titleMedium?.copyWith(
+                                            color: cs.onPrimaryContainer,
+                                            fontWeight: FontWeight.bold,
                                           ),
-                                          fit: BoxFit.cover,
                                         )
                                       : null,
                                 ),
-                                alignment: Alignment.center,
-                                child: (session.profile.avatar.isEmpty ||
-                                        !File(session.profile.avatar)
-                                            .existsSync())
-                                    ? Text(
-                                        displayName
-                                            .substring(0, 1)
-                                            .toUpperCase(),
-                                        style: tt.titleMedium?.copyWith(
-                                          color: cs.onPrimaryContainer,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      )
-                                    : null,
                               ),
                               const SizedBox(width: 12),
                               Expanded(
