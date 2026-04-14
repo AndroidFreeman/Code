@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 
 import '../main.dart';
@@ -45,10 +43,10 @@ class _FadeIndexedStack extends StatefulWidget {
   final List<Widget> children;
 
   const _FadeIndexedStack({
-    Key? key,
+    super.key,
     required this.index,
     required this.children,
-  }) : super(key: key);
+  });
 
   @override
   _FadeIndexedStackState createState() => _FadeIndexedStackState();
@@ -132,6 +130,7 @@ class _DesktopShellState extends State<_DesktopShell> {
   final Set<String> _mountedPageIds = {'timetable'};
   final Set<String> _readyPageIds = {};
   final Map<String, Widget> _pageCache = {};
+  final TimetableController _timetableController = TimetableController();
 
   void _onPageReady(String id) {
     if (!mounted) return;
@@ -166,6 +165,7 @@ class _DesktopShellState extends State<_DesktopShell> {
       'timetable' => TimetablePage(
           session: widget.session,
           onLogout: widget.onLogout,
+          controller: _timetableController,
           onReady: () => _onPageReady(id)),
       'todo' =>
         TodosPage(session: widget.session, onReady: () => _onPageReady(id)),
@@ -180,6 +180,7 @@ class _DesktopShellState extends State<_DesktopShell> {
       _ => TimetablePage(
           session: widget.session,
           onLogout: widget.onLogout,
+          controller: _timetableController,
           onReady: () => _onPageReady(id)),
     };
     _pageCache[id] = w;
@@ -288,7 +289,7 @@ class _DesktopShellState extends State<_DesktopShell> {
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOutCubic,
             width: _isExtended ? 240 : 80,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: Colors.transparent,
             ),
             child: Column(
@@ -307,10 +308,17 @@ class _DesktopShellState extends State<_DesktopShell> {
                             physics: const NeverScrollableScrollPhysics(),
                             child: Row(
                               children: [
-                                Icon(Icons.check_circle_outline_rounded,
-                                    color: cs.primary),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Image.asset(
+                                    'assets/images/logo.png',
+                                    width: 24,
+                                    height: 24,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
                                 const SizedBox(width: 8),
-                                Text('Functions',
+                                Text(loc.t('更多工具', 'More Tools'),
                                     style: tt.titleMedium?.copyWith(
                                         fontWeight: FontWeight.bold)),
                               ],
@@ -337,34 +345,31 @@ class _DesktopShellState extends State<_DesktopShell> {
                                 ProfilePage(session: widget.session)),
                       );
                     },
-                    child: Container(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOutCubic,
-                        padding: EdgeInsets.symmetric(
-                            vertical: _isExtended ? 12 : 0,
-                            horizontal: _isExtended ? 12 : 0),
-                        alignment: _isExtended
-                            ? Alignment.centerLeft
-                            : Alignment.center,
-                        decoration: BoxDecoration(
-                          color: _isExtended
-                              ? cs.surfaceContainerHigh
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                margin: _isExtended
-                                    ? EdgeInsets.zero
-                                    : const EdgeInsets.symmetric(horizontal: 0),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOutCubic,
+                      padding: EdgeInsets.symmetric(
+                          vertical: _isExtended ? 12 : 0,
+                          horizontal: _isExtended ? 12 : 0),
+                      alignment:
+                          _isExtended ? Alignment.centerLeft : Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _isExtended
+                            ? cs.surfaceContainerHigh
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(16),
@@ -399,45 +404,53 @@ class _DesktopShellState extends State<_DesktopShell> {
                                       )
                                     : null,
                               ),
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeInOutCubic,
-                                width: _isExtended ? 140 : 0,
-                                child: ClipRect(
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Opacity(
-                                      opacity: _isExtended ? 1.0 : 0.0,
-                                      child: Padding(
-                                        padding:
-                                            const EdgeInsets.only(left: 12),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              widget
-                                                  .session.profile.displayName,
-                                              style: tt.titleSmall?.copyWith(
-                                                  fontWeight: FontWeight.bold),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            Text(
-                                              widget.session.isTeacher
-                                                  ? loc.t('教师', 'Teacher')
-                                                  : loc.t('学生', 'Student'),
-                                              style: tt.labelSmall?.copyWith(
-                                                  color: cs.onSurfaceVariant),
-                                            ),
-                                          ],
+                            ),
+                            if (_isExtended)
+                              Flexible(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeInOutCubic,
+                                  width: _isExtended ? 124 : 0,
+                                  child: ClipRect(
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Opacity(
+                                        opacity: _isExtended ? 1.0 : 0.0,
+                                        child: Padding(
+                                          padding:
+                                              const EdgeInsets.only(left: 12),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                widget.session.profile
+                                                    .displayName,
+                                                style: tt.titleSmall?.copyWith(
+                                                    fontWeight:
+                                                        FontWeight.bold),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                              Text(
+                                                widget.session.isTeacher
+                                                    ? loc.t('教师', 'Teacher')
+                                                    : loc.t('学生', 'Student'),
+                                                style: tt.labelSmall?.copyWith(
+                                                    color: cs.onSurfaceVariant),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
@@ -513,16 +526,18 @@ class _DesktopShellState extends State<_DesktopShell> {
                                               ),
                                             ),
                                             child: isSelected
-                                                ? (dest.selectedIcon ??
-                                                    dest.icon)
+                                                ? dest.selectedIcon ?? dest.icon
                                                 : dest.icon,
                                           ),
                                           AnimatedContainer(
                                             duration: const Duration(
                                                 milliseconds: 300),
                                             curve: Curves.easeInOutCubic,
-                                            width: _isExtended ? 12 : 0,
+                                            width:
+                                                0, // removed width: _isExtended ? 12 : 0, as it's fixed below
                                           ),
+                                          if (_isExtended)
+                                            const SizedBox(width: 12),
                                           AnimatedContainer(
                                             duration: const Duration(
                                                 milliseconds: 300),
@@ -564,6 +579,75 @@ class _DesktopShellState extends State<_DesktopShell> {
                     },
                   ),
                 ),
+                // Settings
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Bounceable(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _NavSettingsPage(
+                            options: const [],
+                            initialOrder: const [],
+                            onImportWakeUp: _timetableController.importWakeUp,
+                            onClearTimetable:
+                                _timetableController.clearTimetable,
+                            isTeacher: widget.session.isTeacher,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      height: 56,
+                      alignment:
+                          _isExtended ? Alignment.centerLeft : Alignment.center,
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHigh.withValues(alpha: 128),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              width: _isExtended ? 16 : 0,
+                            ),
+                            Icon(Icons.settings, color: cs.onSurfaceVariant),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              width: _isExtended ? 12 : 0,
+                            ),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              width: _isExtended ? 140 : 0,
+                              child: ClipRect(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Opacity(
+                                    opacity: _isExtended ? 1.0 : 0.0,
+                                    child: Text(
+                                      loc.t('设置', 'Settings'),
+                                      style: tt.titleSmall?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 // Logout
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -574,7 +658,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                       alignment:
                           _isExtended ? Alignment.centerLeft : Alignment.center,
                       decoration: BoxDecoration(
-                        color: cs.errorContainer.withOpacity(0.2),
+                        color: cs.errorContainer.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: SingleChildScrollView(
@@ -716,6 +800,7 @@ class _MobileShellState extends State<_MobileShell> {
   }
 
   Future<void> _loadNavPrefs() async {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
     try {
       final features = NativeFeatures(
           dataDir: widget.session.dataDir,
@@ -724,7 +809,6 @@ class _MobileShellState extends State<_MobileShell> {
       if (res['ok'] == true && res['data'] != null) {
         final raw = res['data'];
         if (raw is Map) {
-          final loc = Provider.of<LocaleProvider>(context, listen: false);
           final options = _availablePageOptions(loc);
           final optionIds = options.map((e) => e.id).toList(growable: false);
 
@@ -828,6 +912,7 @@ class _MobileShellState extends State<_MobileShell> {
           options: options,
           initialOrder: normalizedCurrent,
           onImportWakeUp: _timetableController.importWakeUp,
+          onClearTimetable: _timetableController.clearTimetable,
           isTeacher: widget.session.isTeacher,
         ),
       ),
@@ -961,7 +1046,7 @@ class _MobileShellState extends State<_MobileShell> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (_activePageId != 'timetable') {
           setState(() {
@@ -979,12 +1064,9 @@ class _MobileShellState extends State<_MobileShell> {
         final last = _lastBackAt;
         _lastBackAt = now;
         if (last == null || now.difference(last) > const Duration(seconds: 2)) {
-          ScaffoldMessenger.of(context).clearSnackBars();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(loc.t('再按一次退出', 'Press back again to exit')),
-              duration: const Duration(seconds: 2),
-            ),
+          showExpressiveSnackBar(
+            context,
+            loc.t('再按一次退出', 'Press back again to exit'),
           );
           return;
         }
@@ -1072,12 +1154,14 @@ class _NavSettingsPage extends StatefulWidget {
   final List<({String id, String label, IconData icon})> options;
   final List<String> initialOrder;
   final Future<void> Function()? onImportWakeUp;
+  final Future<void> Function()? onClearTimetable;
   final bool isTeacher;
 
   const _NavSettingsPage({
     required this.options,
     required this.initialOrder,
     required this.onImportWakeUp,
+    required this.onClearTimetable,
     required this.isTeacher,
   });
 
@@ -1116,7 +1200,7 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         Navigator.of(context).pop(_order.toList());
       },
@@ -1127,95 +1211,98 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              localeProvider.t('导航栏', 'Navigation Bar'),
-              style: tt.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: cs.onSurfaceVariant,
+            if (!isDesktop) ...[
+              Text(
+                localeProvider.t('导航栏', 'Navigation Bar'),
+                style: tt.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: cs.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(24),
-                border:
-                    Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    localeProvider.t('底栏元素', 'Bottom Bar Items'),
-                    style:
-                        tt.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    localeProvider.t('拖动排序；底栏显示前 3 个，其余在 Drawer 里。',
-                        'Drag to reorder; the bottom bar shows the first 3, the rest stay in the Drawer.'),
-                    style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            ReorderableListView.builder(
-              buildDefaultDragHandles: false,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: orderedOpts.length,
-              proxyDecorator: (child, index, animation) {
-                final id = _order[index];
-                final o = optionsById[id];
-                if (o == null) return child;
-                return Material(
-                  elevation: 6,
-                  color: cs.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(0),
-                    side: BorderSide(
-                        color: cs.outlineVariant.withValues(alpha: 128)),
-                  ),
-                  child: ListTile(
-                    leading: Icon(o.icon),
-                    title: Text(o.label),
-                    trailing: const Icon(Icons.drag_indicator),
-                  ),
-                );
-              },
-              onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  if (newIndex > oldIndex) newIndex -= 1;
-                  final id = _order.removeAt(oldIndex);
-                  _order.insert(newIndex, id);
-                });
-              },
-              itemBuilder: (context, index) {
-                final o = orderedOpts[index];
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  key: ValueKey(o.id),
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: cs.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: cs.outlineVariant.withValues(alpha: 128)),
-                  ),
-                  child: ListTile(
-                    leading: Icon(o.icon),
-                    title: Text(o.label),
-                    trailing: ReorderableDragStartListener(
-                      index: index,
-                      child: const Icon(Icons.drag_indicator),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 128)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      localeProvider.t('底栏元素', 'Bottom Bar Items'),
+                      style:
+                          tt.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 16),
+                    const SizedBox(height: 6),
+                    Text(
+                      localeProvider.t('拖动排序；底栏显示前 3 个，其余在 Drawer 里。',
+                          'Drag to reorder; the bottom bar shows the first 3, the rest stay in the Drawer.'),
+                      style:
+                          tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              ReorderableListView.builder(
+                buildDefaultDragHandles: false,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: orderedOpts.length,
+                proxyDecorator: (child, index, animation) {
+                  final id = _order[index];
+                  final o = optionsById[id];
+                  if (o == null) return child;
+                  return Material(
+                    elevation: 6,
+                    color: cs.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(0),
+                      side: BorderSide(
+                          color: cs.outlineVariant.withValues(alpha: 128)),
+                    ),
+                    child: ListTile(
+                      leading: Icon(o.icon),
+                      title: Text(o.label),
+                      trailing: const Icon(Icons.drag_indicator),
+                    ),
+                  );
+                },
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final id = _order.removeAt(oldIndex);
+                    _order.insert(newIndex, id);
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final o = orderedOpts[index];
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    key: ValueKey(o.id),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 128)),
+                    ),
+                    child: ListTile(
+                      leading: Icon(o.icon),
+                      title: Text(o.label),
+                      trailing: ReorderableDragStartListener(
+                        index: index,
+                        child: const Icon(Icons.drag_indicator),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
             Text(
               localeProvider.t('主题与语言', 'Theme & Language'),
               style: tt.titleSmall?.copyWith(
@@ -1263,6 +1350,17 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                         '导入 WakeUp 课程表', 'Import WakeUp Schedule')),
                     onTap: () async {
                       await widget.onImportWakeUp?.call();
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(Icons.delete_sweep_outlined, color: cs.error),
+                    title: Text(localeProvider.t('清空课表', 'Clear Timetable'),
+                        style: TextStyle(color: cs.error)),
+                    subtitle: Text(localeProvider.t(
+                        '删除当前展示的课表', 'Clear current timetable')),
+                    onTap: () async {
+                      await widget.onClearTimetable?.call();
                     },
                   ),
                 ],
