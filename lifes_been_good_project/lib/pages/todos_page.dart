@@ -331,10 +331,12 @@ class _TodosPageState extends State<TodosPage> {
                     '__delete__'
                 ],
                 customLabelBuilder: (val) {
-                  if (val == '__new__')
+                  if (val == '__new__') {
                     return loc.t('新建文件夹...', 'New Folder...');
-                  if (val == '__delete__')
+                  }
+                  if (val == '__delete__') {
                     return loc.t('删除当前文件夹', 'Delete Current Folder');
+                  }
                   return val;
                 },
                 onSelected: (v) async {
@@ -378,8 +380,7 @@ class _TodosPageState extends State<TodosPage> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 10),
                           decoration: BoxDecoration(
-                            color: cs.errorContainer
-                                .withValues(alpha: (0.85 * 255).round()),
+                            color: cs.errorContainer.withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Text(
@@ -394,12 +395,10 @@ class _TodosPageState extends State<TodosPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow
-                      .withValues(alpha: (0.92 * 255).round()),
+                  color: cs.surfaceContainerLow.withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: cs.outlineVariant
-                          .withValues(alpha: (0.35 * 255).round())),
+                      color: cs.outlineVariant.withValues(alpha: 0.35)),
                 ),
                 child: Row(
                   children: [
@@ -501,12 +500,12 @@ class _TodosPageState extends State<TodosPage> {
                                     child: Card(
                                       elevation: 0,
                                       color: cs.surfaceContainerLow
-                                          .withOpacity(0.92),
+                                          .withValues(alpha: 0.92),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(20),
                                         side: BorderSide(
                                             color: cs.outlineVariant
-                                                .withOpacity(0.35)),
+                                                .withValues(alpha: 0.35)),
                                       ),
                                       child: ListTile(
                                         contentPadding:
