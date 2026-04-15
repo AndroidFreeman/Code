@@ -288,14 +288,14 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
           ),
           navigationDrawerTheme: NavigationDrawerThemeData(
-            backgroundColor: Colors.white.withValues(alpha: 204),
+            backgroundColor: Colors.white.withAlpha(204),
             indicatorColor: baseTheme.colorScheme.secondaryContainer,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(expressiveRadius),
             ),
           ),
           navigationRailTheme: NavigationRailThemeData(
-            backgroundColor: Colors.white.withValues(alpha: 204),
+            backgroundColor: Colors.white.withAlpha(204),
             indicatorColor: baseTheme.colorScheme.secondaryContainer,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(expressiveRadius),
@@ -307,7 +307,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             focusElevation: 0,
             backgroundColor: baseTheme.colorScheme.primaryContainer,
             foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
-            splashColor: baseTheme.colorScheme.primary.withValues(alpha: 26),
+            splashColor: baseTheme.colorScheme.primary.withAlpha(26),
             shape: const CircleBorder(),
           ),
           iconButtonTheme: IconButtonThemeData(
@@ -341,8 +341,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               ),
               side: WidgetStatePropertyAll(
                 BorderSide(
-                  color: baseTheme.colorScheme.outlineVariant
-                      .withValues(alpha: 128),
+                  color: baseTheme.colorScheme.outlineVariant.withAlpha(128),
                 ),
               ),
               backgroundColor: WidgetStateProperty.resolveWith(
@@ -364,7 +363,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               overlayColor: WidgetStateProperty.resolveWith(
                 (states) {
                   if (states.contains(WidgetState.pressed)) {
-                    return baseTheme.colorScheme.primary.withValues(alpha: 26);
+                    return baseTheme.colorScheme.primary.withAlpha(26);
                   }
                   return null;
                 },
@@ -380,7 +379,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               elevation: 0,
               backgroundColor: baseTheme.colorScheme.primaryContainer,
               foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
-              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 20),
+              shadowColor: baseTheme.colorScheme.shadow.withAlpha(20),
               surfaceTintColor: Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             ).copyWith(
@@ -402,11 +401,10 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               backgroundColor: baseTheme.colorScheme.surfaceContainerLow,
               foregroundColor: baseTheme.colorScheme.onSurface,
               side: BorderSide(
-                color:
-                    baseTheme.colorScheme.outlineVariant.withValues(alpha: 128),
+                color: baseTheme.colorScheme.outlineVariant.withAlpha(128),
               ),
               elevation: 0,
-              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 16),
+              shadowColor: baseTheme.colorScheme.shadow.withAlpha(16),
               surfaceTintColor: Colors.transparent,
             ).copyWith(
               shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
@@ -525,14 +523,14 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
           ),
           navigationDrawerTheme: NavigationDrawerThemeData(
-            backgroundColor: Colors.black.withValues(alpha: 204),
+            backgroundColor: Colors.black.withAlpha(204),
             indicatorColor: darkTheme.colorScheme.secondaryContainer,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(expressiveRadius),
             ),
           ),
           navigationRailTheme: NavigationRailThemeData(
-            backgroundColor: Colors.black.withValues(alpha: 204),
+            backgroundColor: Colors.black.withAlpha(204),
             indicatorColor: darkTheme.colorScheme.secondaryContainer,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(expressiveRadius),
@@ -544,7 +542,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             focusElevation: 2,
             backgroundColor: darkTheme.colorScheme.primaryContainer,
             foregroundColor: darkTheme.colorScheme.onPrimaryContainer,
-            splashColor: darkTheme.colorScheme.primary.withValues(alpha: 26),
+            splashColor: darkTheme.colorScheme.primary.withAlpha(26),
             shape: const CircleBorder(),
           ),
           iconButtonTheme: IconButtonThemeData(
@@ -578,8 +576,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               ),
               side: WidgetStatePropertyAll(
                 BorderSide(
-                  color: darkTheme.colorScheme.outlineVariant
-                      .withValues(alpha: 128),
+                  color: darkTheme.colorScheme.outlineVariant.withAlpha(128),
                 ),
               ),
               backgroundColor: WidgetStateProperty.resolveWith(

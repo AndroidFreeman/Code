@@ -76,7 +76,7 @@ class _BootstrapPageState extends State<BootstrapPage> {
               decoration: BoxDecoration(
                 color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: cs.outlineVariant.withValues(alpha: 96)),
+                border: Border.all(color: cs.outlineVariant.withAlpha(96)),
               ),
               padding: const EdgeInsets.all(18),
               child: Column(

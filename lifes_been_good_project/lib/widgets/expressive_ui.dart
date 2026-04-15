@@ -109,7 +109,7 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
         : '未选择';
     final menuShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
-      side: BorderSide(color: cs.outlineVariant.withValues(alpha: 128)),
+      side: BorderSide(color: cs.outlineVariant.withAlpha(128)),
     );
 
     return MenuAnchor(
@@ -166,8 +166,7 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(16),
-              border:
-                  Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
+              border: Border.all(color: cs.outlineVariant.withAlpha(128)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -180,12 +179,12 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
                       widget.label,
                       style: (widget.labelTextStyle ??
                               tt.labelSmall?.copyWith(
-                                color: fg.withValues(alpha: 179),
+                                color: fg.withAlpha(179),
                                 fontWeight: FontWeight.bold,
                                 height: 1.1,
                               )) ??
                           TextStyle(
-                            color: fg.withValues(alpha: 179),
+                            color: fg.withAlpha(179),
                             fontWeight: FontWeight.bold,
                             height: 1.1,
                           ),
@@ -236,7 +235,8 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
   }
 }
 
-void showExpressiveSnackBar(BuildContext context, String message, {Duration? duration}) {
+void showExpressiveSnackBar(BuildContext context, String message,
+    {Duration? duration}) {
   final cs = Theme.of(context).colorScheme;
   ScaffoldMessenger.of(context).clearSnackBars();
   ScaffoldMessenger.of(context).showSnackBar(

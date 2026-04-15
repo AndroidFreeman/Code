@@ -187,7 +187,7 @@ class _CoursesPageState extends State<CoursesPage> {
         final cs = Theme.of(ctx).colorScheme;
         final inputTheme = InputDecoration(
           filled: true,
-          fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
+          fillColor: cs.surfaceContainerHighest.withAlpha(77),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(28),
             borderSide: BorderSide.none,

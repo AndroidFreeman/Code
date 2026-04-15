@@ -174,7 +174,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                           fillColor: Theme.of(context)
                               .colorScheme
                               .surfaceContainerHighest
-                              .withValues(alpha: 77),
+                              .withAlpha(77),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(28),
                             borderSide: BorderSide.none,
@@ -191,7 +191,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                           fillColor: Theme.of(context)
                               .colorScheme
                               .surfaceContainerHighest
-                              .withValues(alpha: 77),
+                              .withAlpha(77),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(28),
                             borderSide: BorderSide.none,
@@ -259,7 +259,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                             fillColor: Theme.of(context)
                                 .colorScheme
                                 .surfaceContainerHighest
-                                .withValues(alpha: 77),
+                                .withAlpha(77),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(28),
                               borderSide: BorderSide.none,
@@ -270,6 +270,30 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                             DropdownMenuItem(
                               value: '',
                               child: Text(loc.t('普通学生', 'Regular Student')),
+                            ),
+                            DropdownMenuItem(
+                              value: '班长',
+                              child: Text(loc.t('班长', 'Monitor')),
+                            ),
+                            DropdownMenuItem(
+                              value: '学习委员',
+                              child: Text(loc.t('学习委员', 'Study Rep')),
+                            ),
+                            DropdownMenuItem(
+                              value: '生活委员',
+                              child: Text(loc.t('生活委员', 'Life Rep')),
+                            ),
+                            DropdownMenuItem(
+                              value: '心理委员',
+                              child: Text(loc.t('心理委员', 'Psych Rep')),
+                            ),
+                            DropdownMenuItem(
+                              value: '宣传委员',
+                              child: Text(loc.t('宣传委员', 'Publicity Rep')),
+                            ),
+                            DropdownMenuItem(
+                              value: '组织委员',
+                              child: Text(loc.t('组织委员', 'Org Rep')),
                             ),
                             DropdownMenuItem(
                               value: 'cadre',
@@ -377,8 +401,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                         decoration: InputDecoration(
                           labelText: loc.t('学号', 'Student ID'),
                           filled: true,
-                          fillColor:
-                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          fillColor: cs.surfaceContainerHighest.withAlpha(77),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(28),
                             borderSide: BorderSide.none,
@@ -392,8 +415,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                         decoration: InputDecoration(
                           labelText: loc.t('姓名', 'Name'),
                           filled: true,
-                          fillColor:
-                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          fillColor: cs.surfaceContainerHighest.withAlpha(77),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(28),
                             borderSide: BorderSide.none,
@@ -409,8 +431,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                         decoration: InputDecoration(
                           labelText: loc.t('班级（可选）', 'Class (Optional)'),
                           filled: true,
-                          fillColor:
-                              cs.surfaceContainerHighest.withValues(alpha: 77),
+                          fillColor: cs.surfaceContainerHighest.withAlpha(77),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(28),
                             borderSide: BorderSide.none,
@@ -884,7 +905,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                                                     bottom: 24),
                                                 decoration: BoxDecoration(
                                                   color: cs.onSurfaceVariant
-                                                      .withValues(alpha: 0.4),
+                                                      .withAlpha(102),
                                                   borderRadius:
                                                       BorderRadius.circular(2),
                                                 ),

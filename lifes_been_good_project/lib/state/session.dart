@@ -33,9 +33,28 @@ class Session extends ChangeNotifier {
 
   bool get isTeacher => profile.role == 'teacher';
   bool get isStudent => !isTeacher;
-  bool get isCadre => isStudent && studentPosition == 'cadre';
 
-  bool get canTakeAttendance => isTeacher || isCadre;
+  // Refined student roles (positions)
+  bool get isMonitor => isStudent && studentPosition == '班长';
+  bool get isStudyRep => isStudent && studentPosition == '学习委员';
+  bool get isLifeRep => isStudent && studentPosition == '生活委员';
+  bool get isPsychRep => isStudent && studentPosition == '心理委员';
+  bool get isPublicityRep => isStudent && studentPosition == '宣传委员';
+  bool get isOrgRep => isStudent && studentPosition == '组织委员';
+
+  // Original 'cadre' was used for general student leaders.
+  // We keep it for backward compatibility if needed, or map it to the new roles.
+  bool get isCadre =>
+      isMonitor ||
+      isStudyRep ||
+      isLifeRep ||
+      isPsychRep ||
+      isPublicityRep ||
+      isOrgRep ||
+      studentPosition == 'cadre';
+
+  // Permission checks
+  bool get canTakeAttendance => isTeacher || isMonitor || isStudyRep;
   bool get canViewStudents => isTeacher;
   bool get canDeleteStudents => isTeacher;
 }

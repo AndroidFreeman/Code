@@ -42,6 +42,7 @@ class TimetablePage extends StatefulWidget {
 
 class _TimetablePageState extends State<TimetablePage> {
   String _status = '';
+  bool _loading = false;
   List<TimetableItem> _items = const [];
   Map<String, Course> _courses = const {};
   Map<String, Color> _courseColors = {};
@@ -108,7 +109,6 @@ class _TimetablePageState extends State<TimetablePage> {
   static const int _maxVisiblePeriod = 10;
 
   late PageController _pageController;
-  final ScrollController _gridScrollController = ScrollController();
 
   @override
   void initState() {
@@ -116,7 +116,8 @@ class _TimetablePageState extends State<TimetablePage> {
     _currentWeek = _calculateCurrentWeek();
     _currentWeekN = ValueNotifier<int>(_currentWeek);
     _viewingProfileId = widget.session.profile.id;
-    _pageController = PageController(initialPage: _currentWeek - 1);
+    _pageController =
+        PageController(initialPage: (_currentWeek - 1).clamp(0, 19));
     Future.microtask(() async {
       await _loadUiPrefs();
       if (!mounted) return;
@@ -138,7 +139,6 @@ class _TimetablePageState extends State<TimetablePage> {
     widget.controller?.addCourse = null;
     _currentWeekN.dispose();
     _pageController.dispose();
-    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -215,7 +215,7 @@ class _TimetablePageState extends State<TimetablePage> {
   int _calculateCurrentWeek() {
     final now = DateTime.now();
     // Use the same reference date as in _buildWeekdayHeader
-    final firstWeekStart = DateTime(now.year, 3, 9);
+    final firstWeekStart = DateTime(2026, 3, 9);
     final diff = now.difference(firstWeekStart).inDays;
     if (diff < 0) return 1;
     final week = (diff / 7).floor() + 1;
@@ -1105,7 +1105,7 @@ class _TimetablePageState extends State<TimetablePage> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 7),
                         labelTextStyle: tt.labelSmall?.copyWith(
-                          color: cs.onTertiaryContainer.withValues(alpha: 179),
+                          color: cs.onTertiaryContainer.withAlpha(179),
                           fontWeight: FontWeight.bold,
                           height: 1.1,
                         ),
@@ -1167,7 +1167,7 @@ class _TimetablePageState extends State<TimetablePage> {
                             color: cs.tertiaryContainer,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: cs.outlineVariant.withValues(alpha: 96),
+                              color: cs.outlineVariant.withAlpha(96),
                             ),
                           ),
                           child: Row(
@@ -1339,10 +1339,8 @@ class _TimetablePageState extends State<TimetablePage> {
                           ),
                           Expanded(
                             child: Scrollbar(
-                              controller: _gridScrollController,
                               thumbVisibility: isDesktop,
                               child: SingleChildScrollView(
-                                controller: _gridScrollController,
                                 physics: scrollPhysics,
                                 padding: EdgeInsets.only(
                                   bottom:
@@ -1419,7 +1417,7 @@ class _TimetablePageState extends State<TimetablePage> {
                 color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: cs.outlineVariant.withValues(alpha: 128),
+                  color: cs.outlineVariant.withAlpha(128),
                 ),
               ),
               child: Center(
@@ -1459,8 +1457,7 @@ class _TimetablePageState extends State<TimetablePage> {
   Widget _buildMonthHeader({required int targetWeek}) {
     final loc = Provider.of<LocaleProvider>(context);
     final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    final firstWeekStart = DateTime(now.year, 3, 9);
+    final firstWeekStart = DateTime(2026, 3, 9);
     final startOfTargetWeek =
         firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
     final targetMonth = startOfTargetWeek.month;
@@ -1505,7 +1502,7 @@ class _TimetablePageState extends State<TimetablePage> {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
     // Assuming 2026 spring semester start date for date calculation
-    final firstWeekStart = DateTime(2026, 3, 2);
+    final firstWeekStart = DateTime(2026, 3, 9);
     final startOfTargetWeek =
         firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
     final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
@@ -1602,7 +1599,7 @@ class _TimetablePageState extends State<TimetablePage> {
     final cs = Theme.of(context).colorScheme;
     const double cellHeight = 60;
     final now = DateTime.now();
-    final firstWeekStart = DateTime(now.year, 3, 9);
+    final firstWeekStart = DateTime(2026, 3, 9);
     final startOfTargetWeek =
         firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
 
@@ -1623,7 +1620,7 @@ class _TimetablePageState extends State<TimetablePage> {
               bottom: 0,
               width: cellWidth,
               child: Container(
-                color: cs.primary.withValues(alpha: (0.05 * 255).round()),
+                color: cs.primary.withAlpha((0.05 * 255).round()),
               ),
             );
           }),
@@ -1633,8 +1630,8 @@ class _TimetablePageState extends State<TimetablePage> {
               top: 0,
               bottom: 0,
               width: 1,
-              child: Container(
-                  color: Colors.grey.withValues(alpha: (0.1 * 255).round())),
+              child:
+                  Container(color: Colors.grey.withAlpha((0.1 * 255).round())),
             );
           }),
           ...List.generate(_maxVisiblePeriod, (i) {
@@ -1643,8 +1640,8 @@ class _TimetablePageState extends State<TimetablePage> {
               right: 0,
               top: i * cellHeight,
               height: 1,
-              child: Container(
-                  color: Colors.grey.withValues(alpha: (0.1 * 255).round())),
+              child:
+                  Container(color: Colors.grey.withAlpha((0.1 * 255).round())),
             );
           }),
           ..._items.where((e) => e.isWeekIncluded(targetWeek)).map((item) {
@@ -1711,7 +1708,7 @@ class _TimetablePageState extends State<TimetablePage> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Colors.black.withValues(alpha: 220),
+                            color: Colors.black.withAlpha(220),
                             height: 1.5,
                           ),
                           maxLines: 4,
@@ -1725,7 +1722,7 @@ class _TimetablePageState extends State<TimetablePage> {
                               Icon(
                                 Icons.location_on_outlined,
                                 size: 10,
-                                color: Colors.black.withValues(alpha: 150),
+                                color: Colors.black.withAlpha(150),
                               ),
                               const SizedBox(width: 2),
                               Expanded(
@@ -1733,7 +1730,7 @@ class _TimetablePageState extends State<TimetablePage> {
                                   item.location,
                                   style: TextStyle(
                                     fontSize: 9,
-                                    color: Colors.black.withValues(alpha: 150),
+                                    color: Colors.black.withAlpha(150),
                                     fontWeight: FontWeight.w500,
                                     height: 1.15,
                                   ),
@@ -1751,7 +1748,7 @@ class _TimetablePageState extends State<TimetablePage> {
                                   horizontal: 4, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.black
-                                    .withValues(alpha: (0.05 * 255).round()),
+                                    .withAlpha((0.05 * 255).round()),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -1759,7 +1756,7 @@ class _TimetablePageState extends State<TimetablePage> {
                                 style: TextStyle(
                                     fontSize: 8,
                                     color: Colors.black
-                                        .withValues(alpha: (0.6 * 255).round()),
+                                        .withAlpha((0.6 * 255).round()),
                                     fontWeight: FontWeight.bold),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,

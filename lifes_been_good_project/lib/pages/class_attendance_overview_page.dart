@@ -138,7 +138,9 @@ class _ClassAttendanceOverviewPageState
         if (s.isEmpty) return false;
         try {
           final dt = DateTime.parse(s).toLocal();
-          return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+          return dt.year == now.year &&
+              dt.month == now.month &&
+              dt.day == now.day;
         } catch (_) {
           return s.startsWith(now.toIso8601String().substring(0, 10));
         }
@@ -337,8 +339,7 @@ class _ClassAttendanceOverviewPageState
                                                             LinearGradient(
                                                           colors: [
                                                             cs.primary
-                                                                .withValues(
-                                                                    alpha: 0.7),
+                                                                .withAlpha(179),
                                                             cs.primary
                                                           ],
                                                         ),
@@ -362,8 +363,7 @@ class _ClassAttendanceOverviewPageState
                                                             LinearGradient(
                                                           colors: [
                                                             cs.tertiary
-                                                                .withValues(
-                                                                    alpha: 0.7),
+                                                                .withAlpha(179),
                                                             cs.tertiary
                                                           ],
                                                         ),
@@ -386,8 +386,8 @@ class _ClassAttendanceOverviewPageState
                                                         gradient:
                                                             LinearGradient(
                                                           colors: [
-                                                            cs.error.withValues(
-                                                                alpha: 0.7),
+                                                            cs.error
+                                                                .withAlpha(179),
                                                             cs.error
                                                           ],
                                                         ),
@@ -411,8 +411,7 @@ class _ClassAttendanceOverviewPageState
                                                             LinearGradient(
                                                           colors: [
                                                             cs.secondary
-                                                                .withValues(
-                                                                    alpha: 0.7),
+                                                                .withAlpha(179),
                                                             cs.secondary
                                                           ],
                                                         ),

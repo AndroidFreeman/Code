@@ -643,8 +643,8 @@ class _AttendancePageState extends State<AttendancePage> {
                     style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
                 Text(
                     '${loc.t('下节课程:', 'Next course:')} $nextName ${_nextCourse != null ? '(${_nextCourse!.startTime} - ${_nextCourse!.endTime})' : ''}',
-                    style: tt.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant.withValues(alpha: 204))),
+                    style: tt.bodySmall
+                        ?.copyWith(color: cs.onSurfaceVariant.withAlpha(204))),
               ],
             ),
           ),
@@ -690,9 +690,9 @@ class _AttendancePageState extends State<AttendancePage> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 128),
+        color: cs.surfaceContainerHighest.withAlpha(128),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 77)),
+        border: Border.all(color: cs.outlineVariant.withAlpha(77)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -778,13 +778,13 @@ class _AttendancePageState extends State<AttendancePage> {
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isMarked
-            ? cs.primaryContainer.withValues(alpha: 77)
+            ? cs.primaryContainer.withAlpha(77)
             : cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: isMarked
-              ? cs.primary.withValues(alpha: 128)
-              : cs.outlineVariant.withValues(alpha: 77),
+              ? cs.primary.withAlpha(128)
+              : cs.outlineVariant.withAlpha(77),
           width: isMarked ? 2 : 1,
         ),
       ),
