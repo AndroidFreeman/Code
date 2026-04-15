@@ -58,6 +58,7 @@ class _ProfilePageState extends State<ProfilePage> {
       allowMultiple: false,
     );
     if (result != null && result.files.single.path != null) {
+      if (!mounted) return;
       final path = result.files.single.path!;
       final loc = Provider.of<LocaleProvider>(context, listen: false);
       final theme = Theme.of(context);
@@ -242,7 +243,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         prefixIcon: const Icon(Icons.person_outline),
                         hintText: loc.t('用户名 / 昵称', 'Username / Nickname'),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withAlpha(77),
+                        fillColor:
+                            cs.surfaceContainerHighest.withValues(alpha: 77),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28),
                           borderSide: BorderSide.none,
@@ -257,7 +259,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         prefixIcon: const Icon(Icons.phone_outlined),
                         hintText: loc.t('手机号', 'Phone'),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withAlpha(77),
+                        fillColor:
+                            cs.surfaceContainerHighest.withValues(alpha: 77),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28),
                           borderSide: BorderSide.none,
@@ -273,7 +276,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         prefixIcon: const Icon(Icons.email_outlined),
                         hintText: loc.t('邮箱', 'Email'),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withAlpha(77),
+                        fillColor:
+                            cs.surfaceContainerHighest.withValues(alpha: 77),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28),
                           borderSide: BorderSide.none,
@@ -289,7 +293,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         prefixIcon: const Icon(Icons.home_outlined),
                         hintText: loc.t('寝室', 'Dormitory'),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withAlpha(77),
+                        fillColor:
+                            cs.surfaceContainerHighest.withValues(alpha: 77),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28),
                           borderSide: BorderSide.none,
@@ -304,7 +309,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         prefixIcon: const Icon(Icons.edit_note),
                         hintText: loc.t('个性签名', 'Bio'),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withAlpha(77),
+                        fillColor:
+                            cs.surfaceContainerHighest.withValues(alpha: 77),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28),
                           borderSide: BorderSide.none,
