@@ -43,7 +43,6 @@ class _FadeIndexedStack extends StatefulWidget {
   final List<Widget> children;
 
   const _FadeIndexedStack({
-    super.key,
     required this.index,
     required this.children,
   });
@@ -483,7 +482,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                             height: 56,
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? cs.primaryContainer.withAlpha(128)
+                                  ? cs.primaryContainer.withValues(alpha: 128)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
                             ),
@@ -526,7 +525,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                                               ),
                                             ),
                                             child: isSelected
-                                                ? dest.selectedIcon ?? dest.icon
+                                                ? dest.selectedIcon
                                                 : dest.icon,
                                           ),
                                           AnimatedContainer(
@@ -602,7 +601,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                       alignment:
                           _isExtended ? Alignment.centerLeft : Alignment.center,
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHigh.withAlpha(128),
+                        color: cs.surfaceContainerHigh.withValues(alpha: 128),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: SingleChildScrollView(
@@ -658,7 +657,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                       alignment:
                           _isExtended ? Alignment.centerLeft : Alignment.center,
                       decoration: BoxDecoration(
-                        color: cs.errorContainer.withAlpha(51),
+                        color: cs.errorContainer.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: SingleChildScrollView(
@@ -1225,7 +1224,8 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: cs.outlineVariant.withAlpha(128)),
+                  border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 128)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1260,7 +1260,8 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                     color: cs.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(0),
-                      side: BorderSide(color: cs.outlineVariant.withAlpha(128)),
+                      side: BorderSide(
+                          color: cs.outlineVariant.withValues(alpha: 128)),
                     ),
                     child: ListTile(
                       leading: Icon(o.icon),
@@ -1285,8 +1286,8 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                     decoration: BoxDecoration(
                       color: cs.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border:
-                          Border.all(color: cs.outlineVariant.withAlpha(128)),
+                      border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 128)),
                     ),
                     child: ListTile(
                       leading: Icon(o.icon),
