@@ -414,7 +414,9 @@ class _AddCoursePageState extends State<AddCoursePage> {
       if (parts.length == 2) {
         final start = int.tryParse(parts[0]) ?? 1;
         final end = int.tryParse(parts[1]) ?? 20;
-        for (var i = start; i <= end; i++) selectedWeeks.add(i);
+        for (var i = start; i <= end; i++) {
+          selectedWeeks.add(i);
+        }
       }
     } else {
       for (final s in currentWeeks.split(',')) {
