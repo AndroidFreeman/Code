@@ -173,7 +173,7 @@ class HomeDrawer extends StatelessWidget {
                             color: cs.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: cs.outlineVariant.withAlpha(128),
+                              color: cs.outlineVariant.withValues(alpha: 128),
                             ),
                           ),
                           child: Row(
@@ -295,13 +295,12 @@ class HomeDrawer extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: isSelected
-            ? cs.primaryContainer.withAlpha(102)
+            ? cs.primaryContainer.withValues(alpha: 102)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(16),
-      ),
         border: isSelected
-              ? Border.all(color: cs.primary.withAlpha(26), width: 1)
-              : null,
+            ? Border.all(color: cs.primary.withValues(alpha: 26), width: 1)
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
