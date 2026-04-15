@@ -339,7 +339,8 @@ class _ClassAttendanceOverviewPageState
                                                             LinearGradient(
                                                           colors: [
                                                             cs.primary
-                                                                .withAlpha(179),
+                                                                .withValues(
+                                                                    alpha: 0.7),
                                                             cs.primary
                                                           ],
                                                         ),
@@ -363,7 +364,8 @@ class _ClassAttendanceOverviewPageState
                                                             LinearGradient(
                                                           colors: [
                                                             cs.tertiary
-                                                                .withAlpha(179),
+                                                                .withValues(
+                                                                    alpha: 0.7),
                                                             cs.tertiary
                                                           ],
                                                         ),
@@ -386,8 +388,8 @@ class _ClassAttendanceOverviewPageState
                                                         gradient:
                                                             LinearGradient(
                                                           colors: [
-                                                            cs.error
-                                                                .withAlpha(179),
+                                                            cs.error.withValues(
+                                                                alpha: 0.7),
                                                             cs.error
                                                           ],
                                                         ),
@@ -411,7 +413,8 @@ class _ClassAttendanceOverviewPageState
                                                             LinearGradient(
                                                           colors: [
                                                             cs.secondary
-                                                                .withAlpha(179),
+                                                                .withValues(
+                                                                    alpha: 0.7),
                                                             cs.secondary
                                                           ],
                                                         ),
@@ -705,7 +708,7 @@ class _LegendChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
