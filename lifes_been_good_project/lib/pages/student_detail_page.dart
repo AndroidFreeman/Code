@@ -41,12 +41,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     final s = v.trim();
     if (s.isEmpty) return loc.t('普通学生', 'Regular Student');
     if (s == 'cadre') return loc.t('班干部', 'Class Cadre');
-    if (s == '班长') return loc.t('班长', 'Monitor');
-    if (s == '学习委员') return loc.t('学习委员', 'Study Rep');
-    if (s == '生活委员') return loc.t('生活委员', 'Life Rep');
-    if (s == '心理委员') return loc.t('心理委员', 'Psych Rep');
-    if (s == '宣传委员') return loc.t('宣传委员', 'Publicity Rep');
-    if (s == '组织委员') return loc.t('组织委员', 'Org Rep');
     return s;
   }
 
@@ -181,6 +175,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       selectedClass = allClasses.first;
     }
 
+    if (!mounted) return;
+
     final res = await showDialog<String>(
       context: context,
       builder: (ctx) {
@@ -198,7 +194,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(24),
-                borderSide: BorderSide(color: cs.outlineVariant.withAlpha(128)),
+                borderSide:
+                    BorderSide(color: cs.outlineVariant.withValues(alpha: 128)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(24),
@@ -255,16 +252,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                         ExpressiveSelector(
                           label: loc.t('职位', 'Position'),
                           value: pos.isEmpty ? '' : pos,
-                          items: const [
-                            '',
-                            '班长',
-                            '学习委员',
-                            '生活委员',
-                            '心理委员',
-                            '宣传委员',
-                            '组织委员',
-                            'cadre'
-                          ],
+                          items: const ['', 'cadre'],
                           customLabelBuilder: (v) => _positionLabel(v, loc),
                           onSelected: (v) {
                             setLocal(() {
