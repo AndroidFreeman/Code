@@ -80,7 +80,7 @@ class LocalProfiles {
         out.add(
             '$id,$role,,,${_safe(display)},${_safe(display)},${_safe(org)},${_safe(cls)},,,,,,,');
       }
-      await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+      await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
       return;
     }
     if (firstLine.trim() ==
@@ -98,7 +98,7 @@ class LocalProfiles {
         out.add(
             '${parts[0]},${parts[1]},${parts[2]},${parts[3]},$display,$display,${parts[5]},${parts[6]},${parts[7]},${parts[8]},,,,,');
       }
-      await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+      await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
       return;
     }
     if (firstLine.trim() ==
@@ -115,7 +115,7 @@ class LocalProfiles {
         out.add(
             '${parts[0]},${parts[1]},${parts[2]},${parts[3]},$display,$display,${parts[5]},${parts[6]},${parts[7]},${parts[8]},${parts[9]},${parts[10]},${parts[11]},${parts[12]},${parts[13]}');
       }
-      await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+      await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
       return;
     }
   }
@@ -151,7 +151,7 @@ class LocalProfiles {
         if (parts.length < 5) continue;
         out.add('${parts[0]},${parts[1]},${parts[2]},${parts[3]},${parts[4]},');
       }
-      await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+      await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
       return;
     }
   }
@@ -262,7 +262,7 @@ class LocalProfiles {
     for (final r in rows) {
       out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
     }
-    await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
   }
 
   static Future<void> removeTeacherClass(
@@ -285,7 +285,7 @@ class LocalProfiles {
     for (final r in rows) {
       out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
     }
-    await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
   }
 
   static Future<void> updateProfile({
@@ -318,7 +318,7 @@ class LocalProfiles {
     for (final r in rows) {
       out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
     }
-    await f.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await f.writeAsString('${out.join('\n')}\n', encoding: utf8);
   }
 
   static Future<Profile> login({
@@ -381,7 +381,7 @@ class LocalProfiles {
       if (!isTeacher && studentNo == accountNo) throw '学号已存在';
     }
 
-    final now = DateTime.now().toUtc().toIso8601String().split('.').first + 'Z';
+    final now = '${DateTime.now().toUtc().toIso8601String().split('.').first}Z';
     final idPrefix = isTeacher ? 'u_teacher' : 'u_student';
     final id = '${idPrefix}_${DateTime.now().millisecondsSinceEpoch}';
     final staffNo = isTeacher ? accountNo : '';
@@ -503,18 +503,18 @@ class LocalProfiles {
     await ensureSchema(dataDir);
     final f = profilesFile(dataDir);
     final rows = await _readRows(dataDir);
-    
+
     // Check if account already exists
     for (final r in rows) {
       if ((r['student_no'] ?? '').trim() == studentNo) {
         return null; // Already exists, no new password
       }
     }
-    
+
     final defaultPwd = studentNo;
     final passwordHash = _fnv1a64Hex(defaultPwd);
-    final now = DateTime.now().toUtc().toIso8601String().split('.').first + 'Z';
-    
+    final now = '${DateTime.now().toUtc().toIso8601String().split('.').first}Z';
+
     final line = [
       profileId,
       'student',
@@ -532,7 +532,7 @@ class LocalProfiles {
       '',
       '',
     ].join(',');
-    
+
     await f.writeAsString('$line\n', encoding: utf8, mode: FileMode.append);
     return defaultPwd;
   }
