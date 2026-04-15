@@ -341,7 +341,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   const SizedBox(height: 16),
                   if (_role == 'student') ...[
                     DropdownButtonFormField<String>(
-                      value: _selectedClass,
+                      initialValue: _selectedClass,
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.class_outlined),
                         labelText: _t(isEn, '班级', 'Class'),
