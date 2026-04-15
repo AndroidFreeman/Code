@@ -76,7 +76,7 @@ class TodosStore {
         ].join(','),
       );
     }
-    await _file.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await _file.writeAsString('${out.join('\n')}\n', encoding: utf8);
   }
 
   Future<List<TodoItem>> listTodos({required String ownerProfileId}) async {
@@ -156,7 +156,7 @@ class TodosStore {
     for (final r in rows) {
       out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
     }
-    await _file.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await _file.writeAsString('${out.join('\n')}\n', encoding: utf8);
   }
 
   Future<void> deleteTodo({required String ownerProfileId, required String id}) async {
@@ -185,7 +185,7 @@ class TodosStore {
     for (final r in rows) {
       out.add(headers.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
     }
-    await _file.writeAsString(out.join('\n') + '\n', encoding: utf8);
+    await _file.writeAsString('${out.join('\n')}\n', encoding: utf8);
   }
 }
 
