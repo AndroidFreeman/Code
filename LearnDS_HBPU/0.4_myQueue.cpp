@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-04-13 18:13:19
+ * @LastEditTime: 2026-04-16 11:30:41
  * @FilePath: /Code/LearnDS_HBPU/0.4_myQueue.cpp
  */
 #include <bits/stdc++.h>
@@ -27,13 +27,9 @@ ArrayQueue* newArrayQueue() {
     return q;
 }
 
-void delArrayQueue(ArrayQueue* q) { 
-    delete q; 
-}
+void delArrayQueue(ArrayQueue* q) { delete q; }
 
-bool isEmptyArrayQueue(ArrayQueue* q) { 
-    return q->count == 0; 
-}
+bool isEmptyArrayQueue(ArrayQueue* q) { return q->count == 0; }
 
 bool pushArrayQueue(ArrayQueue* q, DataType x) {
     if (q->count == MAX_QUEUE_SIZE) {
@@ -85,9 +81,7 @@ void delLinkedQueue(LinkedQueue* q) {
     delete q;
 }
 
-bool isEmptyLinkedQueue(LinkedQueue* q) { 
-    return q->size == 0; 
-}
+bool isEmptyLinkedQueue(LinkedQueue* q) { return q->size == 0; }
 
 void pushLinkedQueue(LinkedQueue* q, DataType x) {
     Node* newNode = new Node;
