@@ -106,7 +106,7 @@ class HomeDrawer extends StatelessWidget {
                               label: loc.t('周课表', 'Timetable'),
                               isSelected: activePage == 'timetable',
                             ),
-                          if (show('todo') && session.isTeacher)
+                          if (show('todo'))
                             _buildMenuItem(
                               context,
                               id: 'todo',

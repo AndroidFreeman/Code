@@ -60,6 +60,14 @@ class _ProfilePageState extends State<ProfilePage> {
     if (result != null && result.files.single.path != null) {
       if (!mounted) return;
       final path = result.files.single.path!;
+
+      if (Platform.isWindows || Platform.isLinux) {
+        setState(() {
+          _avatarPath = path;
+        });
+        return;
+      }
+
       final loc = Provider.of<LocaleProvider>(context, listen: false);
       final theme = Theme.of(context);
 
@@ -81,6 +89,10 @@ class _ProfilePageState extends State<ProfilePage> {
             title: loc.t('裁切头像', 'Crop Avatar'),
             aspectRatioLockEnabled: true,
             resetAspectRatioEnabled: false,
+          ),
+          WebUiSettings(
+            context: context,
+            presentStyle: WebPresentStyle.dialog,
           ),
         ],
       );
@@ -112,16 +124,9 @@ class _ProfilePageState extends State<ProfilePage> {
         signature: _signatureCtrl.text.trim(),
       );
 
-      // Update session profile in memory
-      widget.session.profile = Profile(
-        id: widget.session.profile.id,
-        role: widget.session.profile.role,
-        staffNo: widget.session.profile.staffNo,
-        studentNo: widget.session.profile.studentNo,
+      // Update session profile in memory using copyWith to preserve position and other fields
+      widget.session.profile = widget.session.profile.copyWith(
         displayName: _nameCtrl.text.trim(),
-        realName: widget.session.profile.realName,
-        orgCode: widget.session.profile.orgCode,
-        classCode: widget.session.profile.classCode,
         phone: _phoneCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
         dorm: _dormCtrl.text.trim(),

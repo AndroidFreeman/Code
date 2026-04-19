@@ -182,8 +182,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         cli: cli,
         features: features,
         dataDir: widget.dataDir,
-        profile: profile,
-        studentPosition: position,
+        profile: profile.copyWith(position: position),
       );
       try {
         await LocalProfiles.saveAutoLogin(

@@ -82,6 +82,8 @@ set(NATIVE_FEATURE_TARGETS
   todos_toggle
   attendance_session_start
   attendance_record_mark
+  csv_op
+  json_op
 )
 
 foreach(t IN LISTS NATIVE_FEATURE_TARGETS)

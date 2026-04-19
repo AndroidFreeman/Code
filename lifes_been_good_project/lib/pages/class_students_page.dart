@@ -20,9 +20,10 @@ class ClassStudentsPage extends StatefulWidget {
 }
 
 class _ClassStudentsPageState extends State<ClassStudentsPage> {
-  bool _loading = true;
+  bool _loading = false;
   String _status = '';
   List<Student> _students = const [];
+  Map<String, String> _avatarMap = const {};
 
   List<String> _myClasses = [];
   String _selectedClass = '';
@@ -33,8 +34,26 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
   String _positionLabel(String v, LocaleProvider loc) {
     final s = v.trim();
     if (s.isEmpty) return loc.t('普通学生', 'Regular Student');
-    if (s == 'cadre') return loc.t('班干部', 'Class Cadre');
-    return s;
+    switch (s) {
+      case 'monitor':
+        return loc.t('班长', 'Monitor');
+      case 'study':
+        return loc.t('学习委员', 'Study Comm.');
+      case 'publicity':
+        return loc.t('宣传委员', 'Publicity Comm.');
+      case 'life':
+        return loc.t('生活委员', 'Life Comm.');
+      case 'psychological':
+        return loc.t('心理委员', 'Psych Comm.');
+      case 'organize':
+        return loc.t('组织委员', 'Organize Comm.');
+      case 'branch_secretary':
+        return loc.t('团支书', 'Branch Secretary');
+      case 'cadre':
+        return loc.t('班干部', 'Class Cadre');
+      default:
+        return s;
+    }
   }
 
   @override
@@ -107,6 +126,19 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
       }
       final all = studentMap.values.toList();
 
+      final profilesRes = await widget.session.features
+          .csvOp(action: 'read', file: 'profiles.csv');
+      final avatarMap = <String, String>{};
+      if (profilesRes['ok'] == true) {
+        final pItems = ((profilesRes['data'] ?? const {})['items'] as List?) ?? [];
+        for (final pi in pItems) {
+          final row = (pi as Map).cast<String, String>();
+          final pid = (row['id'] ?? '').trim();
+          final av = (row['avatar'] ?? '').trim();
+          if (pid.isNotEmpty && av.isNotEmpty) avatarMap[pid] = av;
+        }
+      }
+
       var sel = _selectedClass;
       if (sel.isEmpty || !classes.contains(sel)) {
         sel = classes.isNotEmpty ? classes.first : '';
@@ -123,6 +155,7 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
         _myClasses = classes;
         _selectedClass = sel;
         _students = filtered;
+        _avatarMap = avatarMap;
       });
 
       widget.onReady?.call();
@@ -272,6 +305,34 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                             DropdownMenuItem(
                               value: '',
                               child: Text(loc.t('普通学生', 'Regular Student')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'monitor',
+                              child: Text(loc.t('班长', 'Monitor')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'study',
+                              child: Text(loc.t('学习委员', 'Study Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'publicity',
+                              child: Text(loc.t('宣传委员', 'Publicity Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'life',
+                              child: Text(loc.t('生活委员', 'Life Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'psychological',
+                              child: Text(loc.t('心理委员', 'Psych Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'organize',
+                              child: Text(loc.t('组织委员', 'Organize Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'branch_secretary',
+                              child: Text(loc.t('团支书', 'Branch Secretary')),
                             ),
                             DropdownMenuItem(
                               value: 'cadre',
@@ -468,6 +529,34 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                             DropdownMenuItem(
                               value: '',
                               child: Text(loc.t('普通学生', 'Regular Student')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'monitor',
+                              child: Text(loc.t('班长', 'Monitor')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'study',
+                              child: Text(loc.t('学习委员', 'Study Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'publicity',
+                              child: Text(loc.t('宣传委员', 'Publicity Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'life',
+                              child: Text(loc.t('生活委员', 'Life Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'psychological',
+                              child: Text(loc.t('心理委员', 'Psych Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'organize',
+                              child: Text(loc.t('组织委员', 'Organize Comm.')),
+                            ),
+                            DropdownMenuItem(
+                              value: 'branch_secretary',
+                              child: Text(loc.t('团支书', 'Branch Secretary')),
                             ),
                             DropdownMenuItem(
                               value: 'cadre',
@@ -845,12 +934,23 @@ class _ClassStudentsPageState extends State<ClassStudentsPage> {
                                 decoration: BoxDecoration(
                                   color: cs.secondaryContainer,
                                   borderRadius: BorderRadius.circular(12),
+                                  image: _avatarMap.containsKey(s.id) &&
+                                          File(_avatarMap[s.id]!).existsSync()
+                                      ? DecorationImage(
+                                          image:
+                                              FileImage(File(_avatarMap[s.id]!)),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
                                 ),
                                 alignment: Alignment.center,
-                                child: Text(s.fullName.substring(0, 1),
-                                    style: TextStyle(
-                                        color: cs.onSecondaryContainer,
-                                        fontWeight: FontWeight.bold)),
+                                child: (_avatarMap.containsKey(s.id) &&
+                                        File(_avatarMap[s.id]!).existsSync())
+                                    ? null
+                                    : Text(s.fullName.substring(0, 1),
+                                        style: TextStyle(
+                                            color: cs.onSecondaryContainer,
+                                            fontWeight: FontWeight.bold)),
                               ),
                               title: Text(s.fullName,
                                   style: tt.titleMedium

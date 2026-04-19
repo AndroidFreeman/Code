@@ -84,7 +84,9 @@ class LocaleProvider extends ChangeNotifier {
   }
 
   void setLocale(Locale newLocale) {
-    _locale = _normalizeLocale(newLocale);
+    final normalized = _normalizeLocale(newLocale);
+    if (_locale == normalized) return;
+    _locale = normalized;
     notifyListeners();
     unawaited(_save());
   }
@@ -159,8 +161,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           cli: cli,
           features: features,
           dataDir: boot.dataDir,
-          profile: profile,
-          studentPosition: position,
+          profile: profile.copyWith(position: position),
         );
       });
     } catch (_) {

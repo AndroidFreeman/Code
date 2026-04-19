@@ -22,6 +22,7 @@ class CoursesPage extends StatefulWidget {
 class _CoursesPageState extends State<CoursesPage> {
   bool _loading = true;
   String _status = '';
+  bool _dataReady = true;
 
   List<Course> _visibleCourses = const [];
   Map<String, Set<String>> _membersByCourse = const {};
@@ -122,12 +123,21 @@ class _CoursesPageState extends State<CoursesPage> {
     return out;
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool silent = false}) async {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
-    setState(() {
-      _loading = true;
-      _status = '';
-    });
+    if (_visibleCourses.isEmpty && !silent) {
+      setState(() {
+        _loading = false; // changed to false to avoid spinner
+        _status = '';
+      });
+    }
+
+    if (silent) {
+      setState(() {
+        _loading = true; // Show progress bar at top
+        _status = '';
+      });
+    }
 
     Map<String, dynamic> coursesRes;
     if (await widget.session.features.hasFeature('courses_list')) {
@@ -246,7 +256,6 @@ class _CoursesPageState extends State<CoursesPage> {
     }
 
     setState(() {
-      _loading = true;
       _status = '';
     });
 
@@ -282,7 +291,7 @@ class _CoursesPageState extends State<CoursesPage> {
         }
       }
 
-      await _refresh();
+      await _refresh(silent: true);
     } catch (e) {
       setState(() {
         _loading = false;
@@ -336,113 +345,151 @@ class _CoursesPageState extends State<CoursesPage> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_status.trim().isNotEmpty)
-              Text(
-                _status,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            if (_status.trim().isNotEmpty) const SizedBox(height: 8),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _visibleCourses.isEmpty
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_status.trim().isNotEmpty)
+                  Text(
+                    _status,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                if (_status.trim().isNotEmpty) const SizedBox(height: 8),
+                Expanded(
+                  child: (_visibleCourses.isEmpty && !_loading)
                       ? Center(child: Text(loc.t('暂无课程', 'No courses')))
-                      : AnimationLimiter(
-                          child: ListView.separated(
-                            itemCount: _visibleCourses.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final c = _visibleCourses[index];
-                              final members =
-                                  _membersByCourse[c.id]?.length ?? 0;
-                              final subtitle = widget.session.profile.role ==
-                                      'teacher'
-                                  ? loc.t('成员 $members 人', 'Members: $members')
-                                  : loc.t('点击查看详情', 'Tap to view details');
-                              return AnimationConfiguration.staggeredList(
-                                position: index,
-                                duration: const Duration(milliseconds: 375),
-                                child: SlideAnimation(
-                                  verticalOffset: 50.0,
-                                  child: FadeInAnimation(
-                                    child: Material(
-                                      color:
-                                          Theme.of(context).colorScheme.surface,
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(16),
-                                        onTap: () => _openCourse(c),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(14),
-                                          child: Row(
-                                            children: [
-                                              Container(
-                                                width: 40,
-                                                height: 40,
-                                                decoration: BoxDecoration(
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .primaryContainer,
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                ),
-                                                alignment: Alignment.center,
-                                                child: Text(
-                                                  c.courseName.isEmpty
-                                                      ? '?'
-                                                      : c.courseName.characters
-                                                          .first,
-                                                  style: TextStyle(
+                      : (_visibleCourses.isEmpty && _loading)
+                          ? const SizedBox.shrink()
+                          : AnimationLimiter(
+                              child: ListView.separated(
+                                itemCount: _visibleCourses.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  final c = _visibleCourses[index];
+                                  final members =
+                                      _membersByCourse[c.id]?.length ?? 0;
+                                  final subtitle = widget
+                                              .session.profile.role ==
+                                          'teacher'
+                                      ? loc.t(
+                                          '成员 $members 人', 'Members: $members')
+                                      : loc.t('点击查看详情', 'Tap to view details');
+                                  return AnimationConfiguration.staggeredList(
+                                    position: index,
+                                    duration: const Duration(milliseconds: 375),
+                                    child: SlideAnimation(
+                                      verticalOffset: 50.0,
+                                      child: FadeInAnimation(
+                                        child: Material(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .surface,
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                            onTap: () => _openCourse(c),
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(14),
+                                              child: Row(
+                                                children: [
+                                                  Container(
+                                                    width: 40,
+                                                    height: 40,
+                                                    decoration: BoxDecoration(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .primaryContainer,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                    ),
+                                                    alignment: Alignment.center,
+                                                    child: Text(
+                                                      c.courseName.isEmpty
+                                                          ? '?'
+                                                          : c.courseName
+                                                              .characters.first,
+                                                      style: TextStyle(
+                                                        color: Theme.of(context)
+                                                            .colorScheme
+                                                            .onPrimaryContainer,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(
+                                                          c.courseName,
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .titleMedium
+                                                                  ?.copyWith(
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                  ),
+                                                        ),
+                                                        Text(
+                                                          subtitle,
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodySmall
+                                                                  ?.copyWith(
+                                                                    color: Theme.of(
+                                                                            context)
+                                                                        .colorScheme
+                                                                        .onSurfaceVariant,
+                                                                  ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Icon(
+                                                    Icons.chevron_right,
                                                     color: Theme.of(context)
                                                         .colorScheme
-                                                        .onPrimaryContainer,
-                                                    fontWeight: FontWeight.bold,
+                                                        .onSurfaceVariant
+                                                        .withValues(alpha: 0.5),
                                                   ),
-                                                ),
+                                                ],
                                               ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      c.courseName,
-                                                      style: Theme.of(
-                                                        context,
-                                                      ).textTheme.titleMedium,
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      subtitle,
-                                                      style: Theme.of(
-                                                        context,
-                                                      ).textTheme.bodySmall,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const Icon(Icons.chevron_right),
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
+                                  );
+                                },
+                              ),
+                            ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          if (_loading)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
       ),
     );
   }

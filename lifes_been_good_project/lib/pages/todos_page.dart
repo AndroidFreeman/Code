@@ -23,6 +23,7 @@ class _TodosPageState extends State<TodosPage> {
   bool _loading = true;
   String _status = '';
   final _controller = TextEditingController();
+  bool _dataReady = true;
   List<TodoItem> _items = const [];
   List<String> _folders = const ['默认'];
   String _activeFolder = '默认';
@@ -363,81 +364,81 @@ class _TodosPageState extends State<TodosPage> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Column(
-            children: [
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                child: _status.trim().isEmpty
-                    ? const SizedBox(height: 0)
-                    : Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: cs.errorContainer.withValues(alpha: 0.85),
-                            borderRadius: BorderRadius.circular(14),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                children: [
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    child: _status.trim().isEmpty
+                        ? const SizedBox(height: 0)
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: cs.errorContainer.withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Text(
+                                _status,
+                                style: tt.bodySmall
+                                    ?.copyWith(color: cs.onErrorContainer),
+                              ),
+                            ),
                           ),
-                          child: Text(
-                            _status,
-                            style: tt.bodySmall
-                                ?.copyWith(color: cs.onErrorContainer),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.35)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            enabled: !_loading,
+                            decoration: InputDecoration(
+                              hintText: loc.t('输入待办内容…', 'Input todo content...'),
+                              isDense: true,
+                              filled: false,
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            onSubmitted: (_) => _add(),
                           ),
                         ),
-                      ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.35)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        enabled: !_loading,
-                        decoration: InputDecoration(
-                          hintText: loc.t('输入待办内容…', 'Input todo content...'),
-                          isDense: true,
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          onPressed: _loading ? null : _add,
+                          icon: const Icon(Icons.add_rounded),
+                          label: Text(loc.t('添加', 'Add')),
                         ),
-                        onSubmitted: (_) => _add(),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: _loading ? null : _add,
-                      icon: const Icon(Icons.add_rounded),
-                      label: Text(loc.t('添加', 'Add')),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOut,
-                    switchOutCurve: Curves.easeIn,
-                    child: _loading
-                        ? const SizedBox.shrink()
-                        : filtered.isEmpty
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: _refresh,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        child: (filtered.isEmpty && !_loading)
                             ? ListView(
                                 key: const ValueKey('empty'),
                                 children: [
@@ -446,7 +447,9 @@ class _TodosPageState extends State<TodosPage> {
                                       child: Text(loc.t('暂无待办', 'No todos'))),
                                 ],
                               )
-                            : ListView.separated(
+                            : (filtered.isEmpty && _loading)
+                                ? const SizedBox.shrink()
+                                : ListView.separated(
                                 key: const ValueKey('list'),
                                 padding: const EdgeInsets.only(bottom: 24),
                                 itemCount: filtered.length,
@@ -606,12 +609,21 @@ class _TodosPageState extends State<TodosPage> {
                                   );
                                 },
                               ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          if (_loading)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
       ),
     );
   }

@@ -11,85 +11,84 @@ import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/accounting_record.dart';
 import '../state/session.dart';
-import '../widgets/expressive_ui.dart';
 
 class AccountingPage extends StatefulWidget {
   final Session session;
   final VoidCallback? onReady;
 
   static const List<
-          ({String id, String label_cn, String label_en, IconData icon})>
+          ({String id, String labelCn, String labelEn, IconData icon})>
       categories = [
     (
       id: 'meals',
-      label_cn: '三餐',
-      label_en: 'Meals',
+      labelCn: '三餐',
+      labelEn: 'Meals',
       icon: Icons.restaurant_rounded
     ),
     (
       id: 'snacks',
-      label_cn: '零食/饮料',
-      label_en: 'Snacks',
+      labelCn: '零食/饮料',
+      labelEn: 'Snacks',
       icon: Icons.takeout_dining_rounded
     ),
     (
       id: 'clothes',
-      label_cn: '衣服',
-      label_en: 'Clothes',
+      labelCn: '衣服',
+      labelEn: 'Clothes',
       icon: Icons.checkroom_rounded
     ),
     (
       id: 'transport',
-      label_cn: '交通',
-      label_en: 'Transport',
+      labelCn: '交通',
+      labelEn: 'Transport',
       icon: Icons.directions_bus_rounded
     ),
     (
       id: 'phone',
-      label_cn: '话费网费',
-      label_en: 'Phone/Net',
+      labelCn: '话费网费',
+      labelEn: 'Phone/Net',
       icon: Icons.phone_android_rounded
     ),
     (
       id: 'study',
-      label_cn: '学习',
-      label_en: 'Study',
+      labelCn: '学习',
+      labelEn: 'Study',
       icon: Icons.menu_book_rounded
     ),
     (
       id: 'daily',
-      label_cn: '日用品',
-      label_en: 'Daily',
+      labelCn: '日用品',
+      labelEn: 'Daily',
       icon: Icons.shopping_bag_rounded
     ),
     (
       id: 'medical',
-      label_cn: '医疗',
-      label_en: 'Medical',
+      labelCn: '医疗',
+      labelEn: 'Medical',
       icon: Icons.medical_services_rounded
     ),
     (
       id: 'entertainment',
-      label_cn: '娱乐',
-      label_en: 'Fun',
+      labelCn: '娱乐',
+      labelEn: 'Fun',
       icon: Icons.videogame_asset_rounded
     ),
     (
       id: 'electronics',
-      label_cn: '电器数码',
-      label_en: 'Gadgets',
+      labelCn: '电器数码',
+      labelEn: 'Gadgets',
       icon: Icons.camera_alt_rounded
     ),
     (
       id: 'utility',
-      label_cn: '水费/电费',
-      label_en: 'Utility',
+      labelCn: '水费/电费',
+      labelEn: 'Utility',
       icon: Icons.water_drop_rounded
     ),
     (
       id: 'other',
-      label_cn: '其它',
-      label_en: 'Others',
+      labelCn: '其它',
+      labelEn: 'Others',
       icon: Icons.more_horiz_rounded
     ),
   ];
@@ -102,7 +101,7 @@ class AccountingPage extends StatefulWidget {
 
 class _AccountingPageState extends State<AccountingPage> {
   List<AccountingRecord> _records = [];
-  bool _loading = true;
+  bool _loading = false;
 
   DateTime _focusedMonth = DateTime.now();
   DateTime _selectedDate = DateTime.now();
@@ -111,14 +110,19 @@ class _AccountingPageState extends State<AccountingPage> {
   @override
   void initState() {
     super.initState();
+    // Call onReady immediately to prevent navigation lag
+    if (widget.onReady != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onReady?.call();
+      });
+    }
     _loadRecords();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.onReady?.call();
-    });
   }
 
   Future<void> _loadRecords() async {
-    setState(() => _loading = true);
+    if (_records.isEmpty) {
+      setState(() => _loading = true);
+    }
     final allRecords = await widget.session.accounting.listRecords();
     if (mounted) {
       setState(() {
@@ -154,17 +158,19 @@ class _AccountingPageState extends State<AccountingPage> {
         '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
     final daily = _records.where((r) => r.timestamp.startsWith(dateStr));
 
-    if (_filterType == 'income')
+    if (_filterType == 'income') {
       return daily.where((r) => r.type == 0).toList();
-    if (_filterType == 'expense')
+    }
+    if (_filterType == 'expense') {
       return daily.where((r) => r.type == 1).toList();
+    }
     return daily.toList();
   }
 
   IconData _getCategoryIcon(String categoryName) {
     try {
       return AccountingPage.categories
-          .firstWhere((c) => c.label_cn == categoryName)
+          .firstWhere((c) => c.labelCn == categoryName)
           .icon;
     } catch (_) {
       return Icons.help_outline_rounded;
@@ -462,60 +468,66 @@ class _AccountingPageState extends State<AccountingPage> {
     final isIncome = record.type == 0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: ExpressiveCard(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: isIncome
-                  ? Colors.green.withValues(alpha: 26)
-                  : Colors.red.withValues(alpha: 26),
-              child: Icon(
-                _getCategoryIcon(record.category),
-                color: isIncome ? Colors.green : Colors.red,
-                size: 20,
+      child: Card(
+        elevation: 0,
+        color: cs.surfaceContainerLow,
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: isIncome
+                    ? Colors.green.withValues(alpha: 26)
+                    : Colors.red.withValues(alpha: 26),
+                child: Icon(
+                  _getCategoryIcon(record.category),
+                  color: isIncome ? Colors.green : Colors.red,
+                  size: 20,
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.category,
+                      style: TextStyle(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
+                    ),
+                    if (record.description.isNotEmpty)
+                      Text(
+                        record.description,
+                        style:
+                            TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    record.category,
+                    '${isIncome ? '+' : '-'}${record.amount.toStringAsFixed(2)}',
                     style: TextStyle(
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
+                      color: isIncome ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
-                  if (record.description.isNotEmpty)
+                  if (widget.session.isTeacher)
                     Text(
-                      record.description,
+                      record.studentId,
                       style:
-                          TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                          TextStyle(color: cs.onSurfaceVariant, fontSize: 10),
                     ),
                 ],
               ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${isIncome ? '+' : '-'}${record.amount.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: isIncome ? Colors.green : Colors.red,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                if (widget.session.isTeacher)
-                  Text(
-                    record.studentId,
-                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 10),
-                  ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -525,20 +537,21 @@ class _AccountingPageState extends State<AccountingPage> {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
     return showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: Text(loc.t('确认删除', 'Confirm Delete')),
         content: Text(loc.t(
             '确定要删除这条记录吗？', 'Are you sure you want to delete this record?')),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: Text(loc.t('取消', 'Cancel')),
           ),
           TextButton(
             onPressed: () async {
               final ok =
                   await widget.session.accounting.deleteRecord(record.id);
-              if (mounted) Navigator.pop(context, ok);
+              if (!ctx.mounted) return;
+              Navigator.of(ctx).pop(ok);
               if (ok) _loadRecords();
             },
             child: Text(loc.t('删除', 'Delete'),
@@ -558,9 +571,9 @@ class _AccountingPageState extends State<AccountingPage> {
 
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final cs = Theme.of(context).colorScheme;
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctxInner, setDialogState) {
+          final cs = Theme.of(ctxInner).colorScheme;
           return AlertDialog(
             title: Text(loc.t('添加记录', 'Add Record')),
             content: SizedBox(
@@ -623,7 +636,7 @@ class _AccountingPageState extends State<AccountingPage> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                loc.t(cat.label_cn, cat.label_en),
+                                loc.t(cat.labelCn, cat.labelEn),
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: isSelected
@@ -680,11 +693,12 @@ class _AccountingPageState extends State<AccountingPage> {
                     studentId: myId,
                     amount: amount,
                     type: type,
-                    category: selectedCategory.label_cn,
+                    category: selectedCategory.labelCn,
                     description: descCtrl.text,
                   );
 
-                  if (mounted) Navigator.pop(context);
+                  if (!mounted) return;
+                  Navigator.pop(context);
                   if (ok) _loadRecords();
                 },
                 child: Text(loc.t('保存', 'Save')),

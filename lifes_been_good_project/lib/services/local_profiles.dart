@@ -160,16 +160,47 @@ class LocalProfiles {
     required String dataDir,
     required Profile profile,
   }) async {
-    if (profile.role.trim() == 'teacher') return '';
+    if (profile.role.trim().toLowerCase() == 'teacher') return '';
     await ensureStudentsSchema(dataDir);
     final f = studentsFile(dataDir);
     final rows = await _readRowsFromFile(f);
-    final targetNo = profile.studentNo.trim();
+
+    final studentNo = profile.studentNo.trim();
+    final staffNo = profile.staffNo.trim();
+    final id = profile.id.trim();
+
+    String foundPosition = '';
+
     for (final r in rows) {
-      if ((r['student_no'] ?? '').trim() != targetNo) continue;
-      return (r['position'] ?? '').trim();
+      final rNo = (r['student_no'] ?? '').trim();
+      final rId = (r['id'] ?? '').trim();
+      final rFullName = (r['full_name'] ?? '').trim();
+
+      bool match = false;
+      // Multi-layer matching strategy
+      if (studentNo.isNotEmpty &&
+          rNo.toLowerCase() == studentNo.toLowerCase()) {
+        match = true;
+      } else if (staffNo.isNotEmpty &&
+          rNo.toLowerCase() == staffNo.toLowerCase()) {
+        match = true;
+      } else if (id.isNotEmpty && rId == id) {
+        match = true;
+      } else if (profile.realName.isNotEmpty &&
+          rFullName == profile.realName &&
+          rNo.isEmpty) {
+        // Fallback to full_name matching only if the CSV row has no student number
+        match = true;
+      }
+
+      if (match) {
+        final pos = (r['position'] ?? '').trim();
+        if (pos.isNotEmpty)
+          return pos; // Found a valid position, return immediately
+        foundPosition = pos; // Keep track of the last matched (even if empty)
+      }
     }
-    return '';
+    return foundPosition;
   }
 
   static String _safe(String s) {
@@ -429,8 +460,25 @@ class LocalProfiles {
       await ensureStudentsSchema(dataDir);
       final sf = studentsFile(dataDir);
       final sRows = await _readRowsFromFile(sf);
-      final exists = sRows.any((r) => (r['id'] ?? '').trim() == id);
-      if (!exists) {
+
+      // Check if this student already exists by student_no
+      final existingIndex = sRows.indexWhere((r) =>
+          (r['student_no'] ?? '').trim().toLowerCase() ==
+          accountNo.trim().toLowerCase());
+
+      if (existingIndex >= 0) {
+        // Update existing student entry with new profile ID
+        sRows[existingIndex]['id'] = id;
+
+        final sOut = <String>[_studentsHeader];
+        final sHeaders = _studentsHeader.split(',');
+        for (final r in sRows) {
+          sOut.add(
+              sHeaders.map((h) => (r[h] ?? '').replaceAll(',', '')).join(','));
+        }
+        await sf.writeAsString('${sOut.join('\n')}\n', encoding: utf8);
+      } else {
+        // Append new student entry
         final sLine = [
           id,
           accountNo,

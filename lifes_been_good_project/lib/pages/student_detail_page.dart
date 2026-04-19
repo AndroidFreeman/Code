@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -24,11 +25,17 @@ class StudentDetailPage extends StatefulWidget {
 
 class _StudentDetailPageState extends State<StudentDetailPage> {
   late Student _student;
-  bool _loading = true;
+  bool _loading = false;
   String _status = '';
 
   Map<String, int> _counts = const {};
   List<Map<String, String>> _recent = const [];
+  Map<String, String> _avatarMap = const {};
+  
+  DateTime? _startDate;
+  DateTime? _endDate;
+  int _currentPage = 0;
+  static const int _pageSize = 10;
 
   @override
   void initState() {
@@ -40,8 +47,26 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   String _positionLabel(String v, LocaleProvider loc) {
     final s = v.trim();
     if (s.isEmpty) return loc.t('普通学生', 'Regular Student');
-    if (s == 'cadre') return loc.t('班干部', 'Class Cadre');
-    return s;
+    switch (s) {
+      case 'monitor':
+        return loc.t('班长', 'Monitor');
+      case 'study':
+        return loc.t('学习委员', 'Study Comm.');
+      case 'publicity':
+        return loc.t('宣传委员', 'Publicity Comm.');
+      case 'life':
+        return loc.t('生活委员', 'Life Comm.');
+      case 'psychological':
+        return loc.t('心理委员', 'Psych Comm.');
+      case 'organize':
+        return loc.t('组织委员', 'Organize Comm.');
+      case 'branch_secretary':
+        return loc.t('团支书', 'Branch Secretary');
+      case 'cadre':
+        return loc.t('班干部', 'Class Cadre');
+      default:
+        return s;
+    }
   }
 
   Future<void> _refresh() async {
@@ -136,18 +161,33 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
           'course_id': courseId,
           'course_name': (courseMap[courseId] ?? '').trim(),
           'session_id': sessionId,
+          'week': (session['week'] ?? '').trim(),
+          'period': (session['period'] ?? '').trim(),
         });
       }
 
       mine.sort(
           (a, b) => (b['marked_at'] ?? '').compareTo(a['marked_at'] ?? ''));
-      final recent = mine.take(20).toList(growable: false);
+
+      final profilesRes = await widget.session.features
+          .csvOp(action: 'read', file: 'profiles.csv');
+      final avatarMap = <String, String>{};
+      if (profilesRes['ok'] == true) {
+        final pItems = ((profilesRes['data'] ?? const {})['items'] as List?) ?? [];
+        for (final pi in pItems) {
+          final row = (pi as Map).cast<String, String>();
+          final pid = (row['id'] ?? '').trim();
+          final av = (row['avatar'] ?? '').trim();
+          if (pid.isNotEmpty && av.isNotEmpty) avatarMap[pid] = av;
+        }
+      }
 
       if (!mounted) return;
       setState(() {
         _loading = false;
         _counts = counts;
-        _recent = recent;
+        _recent = mine;
+        _avatarMap = avatarMap;
       });
     } catch (e) {
       if (!mounted) return;
@@ -252,7 +292,17 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                         ExpressiveSelector(
                           label: loc.t('职位', 'Position'),
                           value: pos.isEmpty ? '' : pos,
-                          items: const ['', 'cadre'],
+                          items: const [
+                            '',
+                            'monitor',
+                            'study',
+                            'publicity',
+                            'life',
+                            'psychological',
+                            'organize',
+                            'branch_secretary',
+                            'cadre'
+                          ],
                           customLabelBuilder: (v) => _positionLabel(v, loc),
                           onSelected: (v) {
                             setLocal(() {
@@ -469,12 +519,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         title: Text(loc.t('学生详情', 'Student Details')),
         backgroundColor: Colors.transparent,
         actions: [
-          if (widget.session.canViewStudents)
-            IconButton(
-              onPressed: _loading ? null : _editStudent,
-              icon: const Icon(Icons.edit_note_rounded),
-              tooltip: loc.t('编辑', 'Edit'),
-            ),
           IconButton(
             onPressed: _loading ? null : _refresh,
             icon: const Icon(Icons.refresh_rounded),
@@ -528,15 +572,26 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                               decoration: BoxDecoration(
                                 color: cs.primaryContainer,
                                 borderRadius: BorderRadius.circular(24),
+                                image: _avatarMap.containsKey(s.id) &&
+                                        File(_avatarMap[s.id]!).existsSync()
+                                    ? DecorationImage(
+                                        image:
+                                            FileImage(File(_avatarMap[s.id]!)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
                               ),
                               alignment: Alignment.center,
-                              child: Text(
-                                s.fullName.substring(0, 1),
-                                style: tt.displaySmall?.copyWith(
-                                  color: cs.onPrimaryContainer,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              child: (_avatarMap.containsKey(s.id) &&
+                                      File(_avatarMap[s.id]!).existsSync())
+                                  ? null
+                                  : Text(
+                                      s.fullName.substring(0, 1),
+                                      style: tt.displaySmall?.copyWith(
+                                        color: cs.onPrimaryContainer,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
                             const SizedBox(width: 20),
                             Expanded(
@@ -600,126 +655,226 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(loc.t('最近记录', 'Recent Records'),
+                          Text(loc.t('考勤记录', 'Attendance Records'),
                               style: tt.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.bold)),
-                          if (_recent.isNotEmpty)
-                            TextButton(
-                                onPressed: () {},
-                                child: Text(loc.t('查看全部', 'View All'))),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (_recent.isEmpty)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 48),
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                                color:
-                                    cs.outlineVariant.withValues(alpha: 0.5)),
-                          ),
-                          child: Column(
+                          Row(
                             children: [
-                              Icon(Icons.inbox_outlined,
-                                  size: 48,
-                                  color: cs.onSurfaceVariant
-                                      .withValues(alpha: 0.5)),
-                              const SizedBox(height: 16),
-                              Text(loc.t('暂无记录', 'No Records'),
-                                  style: TextStyle(color: cs.onSurfaceVariant)),
+                              IconButton(
+                                icon: const Icon(Icons.date_range_rounded),
+                                onPressed: () async {
+                                  final picked = await showDateRangePicker(
+                                    context: context,
+                                    firstDate: DateTime(2025),
+                                    lastDate: DateTime(2027),
+                                    initialDateRange: _startDate != null && _endDate != null
+                                        ? DateTimeRange(start: _startDate!, end: _endDate!)
+                                        : null,
+                                  );
+                                  if (picked != null) {
+                                    setState(() {
+                                      _startDate = picked.start;
+                                      _endDate = picked.end;
+                                      _currentPage = 0;
+                                    });
+                                  }
+                                },
+                              ),
+                              if (_startDate != null)
+                                IconButton(
+                                  icon: const Icon(Icons.clear_rounded),
+                                  onPressed: () {
+                                    setState(() {
+                                      _startDate = null;
+                                      _endDate = null;
+                                      _currentPage = 0;
+                                    });
+                                  },
+                                ),
                             ],
                           ),
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _recent.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final r = _recent[index];
-                            final status = (r['status'] ?? '').trim();
-                            final courseName = (r['course_name'] ?? '').trim();
-                            final courseId = (r['course_id'] ?? '').trim();
-                            final title = courseName.isNotEmpty
-                                ? courseName
-                                : (courseId.isNotEmpty
-                                    ? courseId
-                                    : loc.t('未命名课程', 'Unnamed Course'));
+                        ],
+                      ),
+                      if (_startDate != null && _endDate != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            '${_startDate!.toString().substring(0, 10)} ~ ${_endDate!.toString().substring(0, 10)}',
+                            style: tt.bodySmall?.copyWith(color: cs.primary, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      Builder(builder: (context) {
+                        var filtered = _recent;
+                        if (_startDate != null && _endDate != null) {
+                          filtered = _recent.where((r) {
                             final markedAt = (r['marked_at'] ?? '').trim();
+                            if (markedAt.isEmpty) return false;
+                            try {
+                              final date = DateTime.parse(markedAt.split(' ').first);
+                              return date.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
+                                  date.isBefore(_endDate!.add(const Duration(days: 1)));
+                            } catch (_) {
+                              return false;
+                            }
+                          }).toList();
+                        }
 
-                            Color statusColor = cs.primary;
-                            if (status == 'late') statusColor = cs.tertiary;
-                            if (status == 'absent') statusColor = cs.error;
-                            if (status == 'leave') statusColor = cs.secondary;
+                        if (filtered.isEmpty) {
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 48),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                  color:
+                                      cs.outlineVariant.withValues(alpha: 0.5)),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(Icons.inbox_outlined,
+                                    size: 48,
+                                    color: cs.onSurfaceVariant
+                                        .withValues(alpha: 0.5)),
+                                const SizedBox(height: 16),
+                                Text(loc.t('暂无记录', 'No Records'),
+                                    style: TextStyle(color: cs.onSurfaceVariant)),
+                              ],
+                            ),
+                          );
+                        }
 
-                            return Bounceable(
-                              onTap: () =>
-                                  _openRecentRecordStatusPicker(context, r),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: cs.surface,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                      color: cs.outlineVariant
-                                          .withValues(alpha: 0.5)),
-                                ),
+                        final totalPages = (filtered.length / _pageSize).ceil();
+                        final startIdx = _currentPage * _pageSize;
+                        final endIdx = (startIdx + _pageSize).clamp(0, filtered.length);
+                        final pageItems = filtered.sublist(startIdx, endIdx);
+
+                        return Column(
+                          children: [
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: pageItems.length,
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final r = pageItems[index];
+                                final status = (r['status'] ?? '').trim();
+                                final courseName = (r['course_name'] ?? '').trim();
+                                final courseId = (r['course_id'] ?? '').trim();
+
+                                final week = (r['week'] ?? '').trim();
+                                final period = (r['period'] ?? '').trim();
+                                final weekStr = week.isNotEmpty ? ' 第$week周' : '';
+                                final periodStr =
+                                    period.isNotEmpty ? ' 第$period节' : '';
+
+                                final title = courseName.isNotEmpty
+                                    ? '$courseName$weekStr$periodStr'
+                                    : (courseId.isNotEmpty
+                                        ? '$courseId$weekStr$periodStr'
+                                        : loc.t('未命名课程', 'Unnamed Course'));
+                                final markedAt = (r['marked_at'] ?? '').trim();
+
+                                Color statusColor = cs.primary;
+                                if (status == 'late') statusColor = cs.tertiary;
+                                if (status == 'absent') statusColor = cs.error;
+                                if (status == 'leave') statusColor = cs.secondary;
+
+                                return Bounceable(
+                                  onTap: () =>
+                                      _openRecentRecordStatusPicker(context, r),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: cs.surface,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                          color: cs.outlineVariant
+                                              .withValues(alpha: 0.5)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                statusColor.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Icon(
+                                            status == 'present'
+                                                ? Icons.check_circle_rounded
+                                                : status == 'late'
+                                                    ? Icons
+                                                        .access_time_filled_rounded
+                                                    : status == 'leave'
+                                                        ? Icons.beach_access_rounded
+                                                        : Icons.cancel_rounded,
+                                            color: statusColor,
+                                            size: 24,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(title,
+                                                  style: tt.titleMedium?.copyWith(
+                                                      fontWeight: FontWeight.bold)),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                  markedAt.isEmpty ? '—' : markedAt,
+                                                  style: tt.bodySmall?.copyWith(
+                                                      color: cs.onSurfaceVariant)),
+                                            ],
+                                          ),
+                                        ),
+                                        _buildBadge(
+                                            context,
+                                            _statusLabel(status, loc),
+                                            statusColor.withValues(alpha: 0.15),
+                                            statusColor),
+                                      ],
+                                    ),
+                                  )
+                                );
+                              },
+                            ),
+                            if (totalPages > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 24),
                                 child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            statusColor.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Icon(
-                                        status == 'present'
-                                            ? Icons.check_circle_rounded
-                                            : status == 'late'
-                                                ? Icons
-                                                    .access_time_filled_rounded
-                                                : status == 'leave'
-                                                    ? Icons.beach_access_rounded
-                                                    : Icons.cancel_rounded,
-                                        color: statusColor,
-                                        size: 24,
-                                      ),
+                                    IconButton(
+                                      onPressed: _currentPage > 0
+                                          ? () => setState(() => _currentPage--)
+                                          : null,
+                                      icon: const Icon(Icons.chevron_left_rounded),
                                     ),
                                     const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(title,
-                                              style: tt.titleMedium?.copyWith(
-                                                  fontWeight: FontWeight.bold)),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                              markedAt.isEmpty ? '—' : markedAt,
-                                              style: tt.bodySmall?.copyWith(
-                                                  color: cs.onSurfaceVariant)),
-                                        ],
-                                      ),
+                                    Text(
+                                      '${_currentPage + 1} / $totalPages',
+                                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
                                     ),
-                                    _buildBadge(
-                                        context,
-                                        _statusLabel(status, loc),
-                                        statusColor.withValues(alpha: 0.1),
-                                        statusColor),
+                                    const SizedBox(width: 16),
+                                    IconButton(
+                                      onPressed: _currentPage < totalPages - 1
+                                          ? () => setState(() => _currentPage++)
+                                          : null,
+                                      icon: const Icon(Icons.chevron_right_rounded),
+                                    ),
                                   ],
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      const SizedBox(height: 40),
+                          ],
+                        );
+                      }),
+                      const SizedBox(height: 80),
                     ],
                   ),
                 ),

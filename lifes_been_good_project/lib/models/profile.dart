@@ -14,6 +14,7 @@ class Profile {
   final String dorm;
   final String avatar;
   final String signature;
+  final String position;
 
   String get displayWithRealName {
     if (realName.isNotEmpty && displayName != realName) {
@@ -32,7 +33,7 @@ class Profile {
       classCode: classCode,
       className: classCode,
       phone: phone,
-      position: role == 'teacher' ? '教师' : '',
+      position: position,
     );
   }
 
@@ -50,6 +51,7 @@ class Profile {
     this.dorm = '',
     this.avatar = '',
     this.signature = '',
+    this.position = '',
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) {
@@ -67,6 +69,41 @@ class Profile {
       dorm: (json['dorm'] ?? '').toString(),
       avatar: (json['avatar'] ?? '').toString(),
       signature: (json['signature'] ?? '').toString(),
+      position: (json['position'] ?? '').toString(),
+    );
+  }
+
+  Profile copyWith({
+    String? id,
+    String? role,
+    String? staffNo,
+    String? studentNo,
+    String? displayName,
+    String? realName,
+    String? orgCode,
+    String? classCode,
+    String? phone,
+    String? email,
+    String? dorm,
+    String? avatar,
+    String? signature,
+    String? position,
+  }) {
+    return Profile(
+      id: id ?? this.id,
+      role: role ?? this.role,
+      staffNo: staffNo ?? this.staffNo,
+      studentNo: studentNo ?? this.studentNo,
+      displayName: displayName ?? this.displayName,
+      realName: realName ?? this.realName,
+      orgCode: orgCode ?? this.orgCode,
+      classCode: classCode ?? this.classCode,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      dorm: dorm ?? this.dorm,
+      avatar: avatar ?? this.avatar,
+      signature: signature ?? this.signature,
+      position: position ?? this.position,
     );
   }
 }

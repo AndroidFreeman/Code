@@ -55,6 +55,7 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late int _currentIndex;
+  int? _previousIndex;
 
   @override
   void initState() {
@@ -62,8 +63,15 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
     _currentIndex = widget.index;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 250),
     );
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() {
+          _previousIndex = null;
+        });
+      }
+    });
     _controller.forward();
   }
 
@@ -72,6 +80,7 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
     super.didUpdateWidget(oldWidget);
     if (widget.index != _currentIndex) {
       setState(() {
+        _previousIndex = _currentIndex;
         _currentIndex = widget.index;
       });
       _controller.forward(from: 0.0);
@@ -86,23 +95,31 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
 
   @override
   Widget build(BuildContext context) {
-    return IndexedStack(
-      key: const ValueKey<String>('IndexedStack'),
-      index: _currentIndex,
-      children: widget.children.map((child) {
-        final int index = widget.children.indexOf(child);
-        final bool isSelected = index == _currentIndex;
+    return Stack(
+      children: widget.children.asMap().entries.map((entry) {
+        final index = entry.key;
+        final child = entry.value;
 
-        return IgnorePointer(
-          ignoring: !isSelected,
-          child: AnimatedOpacity(
-            opacity: isSelected ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-            child: AnimatedSlide(
-              offset: isSelected ? Offset.zero : const Offset(0, 0.02),
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
+        final isCurrent = index == _currentIndex;
+        final isPrevious = index == _previousIndex;
+
+        if (!isCurrent && !isPrevious) {
+          return const SizedBox.shrink();
+        }
+
+        return FadeTransition(
+          opacity: isCurrent
+              ? _controller.drive(CurveTween(curve: Curves.easeOut))
+              : _controller.drive(Tween<double>(begin: 1.0, end: 0.0)
+                  .chain(CurveTween(curve: Curves.easeIn))),
+          child: SlideTransition(
+            position: isCurrent
+                ? _controller.drive(Tween<Offset>(
+                        begin: const Offset(0, 0.02), end: Offset.zero)
+                    .chain(CurveTween(curve: Curves.easeOutCubic)))
+                : const AlwaysStoppedAnimation(Offset.zero),
+            child: IgnorePointer(
+              ignoring: !isCurrent,
               child: child,
             ),
           ),
@@ -130,14 +147,24 @@ class _DesktopShellState extends State<_DesktopShell> {
   final Set<String> _readyPageIds = {};
   final Map<String, Widget> _pageCache = {};
   final TimetableController _timetableController = TimetableController();
+  LocaleProvider? _localeProvider;
 
   void _onPageReady(String id) {
     if (!mounted) return;
-    setState(() {
-      _readyPageIds.add(id);
-      if (_targetPageId == id && _visiblePageId != id) {
-        _visiblePageId = id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _readyPageIds.add(id);
+        });
       }
+    });
+  }
+
+  void _changePage(String id) {
+    setState(() {
+      _targetPageId = id;
+      _visiblePageId = id;
+      _mountedPageIds.add(id);
     });
   }
 
@@ -145,15 +172,26 @@ class _DesktopShellState extends State<_DesktopShell> {
   void initState() {
     super.initState();
     widget.session.addListener(_onSessionChanged);
+    _localeProvider = Provider.of<LocaleProvider>(context, listen: false);
+    _localeProvider?.addListener(_onLocaleChanged);
   }
 
   @override
   void dispose() {
     widget.session.removeListener(_onSessionChanged);
+    _localeProvider?.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
   void _onSessionChanged() {
+    // Only rebuild if actual profile/state that affects Shell changes
+    // This listener is often too broad.
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    // Force refresh all cached pages when language changes
+    _pageCache.clear();
     if (mounted) setState(() {});
   }
 
@@ -264,10 +302,6 @@ class _DesktopShellState extends State<_DesktopShell> {
     }
 
     _mountedPageIds.add(_targetPageId);
-    if (_readyPageIds.contains(_targetPageId)) {
-      _visiblePageId = _targetPageId;
-    }
-
     final pages = pageIds
         .map((id) => _mountedPageIds.contains(id)
             ? _getPage(id)
@@ -291,418 +325,428 @@ class _DesktopShellState extends State<_DesktopShell> {
             decoration: const BoxDecoration(
               color: Colors.transparent,
             ),
-            child: Column(
-              children: [
-                const SizedBox(height: 16),
-                // Toggle Button & Logo
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (_isExtended)
-                        Expanded(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: Row(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: Image.asset(
-                                    'assets/images/logo.png',
-                                    width: 24,
-                                    height: 24,
-                                    fit: BoxFit.cover,
+            child: SafeArea(
+              bottom: false,
+              right: false,
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  // Toggle Button & Logo
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        if (_isExtended)
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const NeverScrollableScrollPhysics(),
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Image.asset(
+                                      'assets/images/logo.png',
+                                      width: 24,
+                                      height: 24,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(loc.t('更多工具', 'More Tools'),
-                                    style: tt.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold)),
-                              ],
+                                  const SizedBox(width: 8),
+                                  Text(loc.t('更多工具', 'More Tools'),
+                                      style: tt.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold)),
+                                ],
+                              ),
                             ),
                           ),
+                        IconButton(
+                          icon:
+                              Icon(_isExtended ? Icons.menu_open : Icons.menu),
+                          onPressed: () =>
+                              setState(() => _isExtended = !_isExtended),
                         ),
-                      IconButton(
-                        icon: Icon(_isExtended ? Icons.menu_open : Icons.menu),
-                        onPressed: () =>
-                            setState(() => _isExtended = !_isExtended),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                // Profile Section
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Bounceable(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) =>
-                                ProfilePage(session: widget.session)),
-                      );
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOutCubic,
-                      padding: EdgeInsets.symmetric(
-                          vertical: _isExtended ? 12 : 0,
-                          horizontal: _isExtended ? 12 : 0),
-                      alignment:
-                          _isExtended ? Alignment.centerLeft : Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _isExtended
-                            ? cs.surfaceContainerHigh
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                      color: cs.outlineVariant, width: 1),
-                                  image: widget.session.profile.avatar
-                                              .isNotEmpty &&
-                                          File(widget.session.profile.avatar)
-                                              .existsSync()
-                                      ? DecorationImage(
-                                          image: FileImage(File(
-                                              widget.session.profile.avatar)),
-                                          fit: BoxFit.cover,
+                  const SizedBox(height: 24),
+                  // Profile Section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Bounceable(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  ProfilePage(session: widget.session)),
+                        );
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOutCubic,
+                        padding: EdgeInsets.symmetric(
+                            vertical: _isExtended ? 12 : 0,
+                            horizontal: _isExtended ? 12 : 0),
+                        alignment: _isExtended
+                            ? Alignment.centerLeft
+                            : Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _isExtended
+                              ? cs.surfaceContainerHigh
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                        color: cs.outlineVariant, width: 1),
+                                    image: widget.session.profile.avatar
+                                                .isNotEmpty &&
+                                            File(widget.session.profile.avatar)
+                                                .existsSync()
+                                        ? DecorationImage(
+                                            image: FileImage(File(
+                                                widget.session.profile.avatar)),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : null,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: (widget
+                                              .session.profile.avatar.isEmpty ||
+                                          !File(widget.session.profile.avatar)
+                                              .existsSync())
+                                      ? Text(
+                                          widget.session.profile.displayName
+                                                  .isNotEmpty
+                                              ? widget
+                                                  .session.profile.displayName
+                                                  .substring(0, 1)
+                                                  .toUpperCase()
+                                              : '?',
+                                          style: TextStyle(
+                                              color: cs.onPrimaryContainer,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 20),
                                         )
                                       : null,
                                 ),
-                                alignment: Alignment.center,
-                                child: (widget.session.profile.avatar.isEmpty ||
-                                        !File(widget.session.profile.avatar)
-                                            .existsSync())
-                                    ? Text(
-                                        widget.session.profile.displayName
-                                                .isNotEmpty
-                                            ? widget.session.profile.displayName
-                                                .substring(0, 1)
-                                                .toUpperCase()
-                                            : '?',
-                                        style: TextStyle(
-                                            color: cs.onPrimaryContainer,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 20),
-                                      )
-                                    : null,
                               ),
-                            ),
-                            if (_isExtended)
-                              Flexible(
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeInOutCubic,
-                                  width: _isExtended ? 124 : 0,
-                                  child: ClipRect(
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Opacity(
-                                        opacity: _isExtended ? 1.0 : 0.0,
-                                        child: Padding(
-                                          padding:
-                                              const EdgeInsets.only(left: 12),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                widget.session.profile
-                                                    .displayName,
-                                                style: tt.titleSmall?.copyWith(
-                                                    fontWeight:
-                                                        FontWeight.bold),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                              Text(
-                                                widget.session.isTeacher
-                                                    ? loc.t('教师', 'Teacher')
-                                                    : loc.t('学生', 'Student'),
-                                                style: tt.labelSmall?.copyWith(
-                                                    color: cs.onSurfaceVariant),
-                                                overflow: TextOverflow.ellipsis,
-                                                maxLines: 1,
-                                              ),
-                                            ],
+                              if (_isExtended)
+                                Flexible(
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOutCubic,
+                                    width: _isExtended ? 124 : 0,
+                                    child: ClipRect(
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Opacity(
+                                          opacity: _isExtended ? 1.0 : 0.0,
+                                          child: Padding(
+                                            padding:
+                                                const EdgeInsets.only(left: 12),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  widget.session.profile
+                                                      .displayName,
+                                                  style: tt.titleSmall
+                                                      ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.bold),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
+                                                Text(
+                                                  widget.session.isTeacher
+                                                      ? loc.t('教师', 'Teacher')
+                                                      : loc.t('学生', 'Student'),
+                                                  style: tt.labelSmall?.copyWith(
+                                                      color:
+                                                          cs.onSurfaceVariant),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                // Nav Items
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: items.length,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemBuilder: (context, index) {
-                      final targetIdx = pageIds.indexOf(_targetPageId);
-                      final isSelected =
-                          (targetIdx >= 0 ? targetIdx : 0) == index;
-                      final dest = items[index].destination;
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Bounceable(
-                          onTap: () {
-                            setState(() {
-                              _targetPageId = items[index].id;
-                              _mountedPageIds.add(_targetPageId);
-                              if (_readyPageIds.contains(_targetPageId)) {
-                                _visiblePageId = _targetPageId;
-                              }
-                            });
-                          },
-                          child: Container(
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? cs.primaryContainer.withValues(alpha: 128)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              children: [
-                                // The Highlighting Line
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  width: 4,
-                                  height: isSelected ? 24 : 0,
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? cs.primary
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 24),
+                  // Nav Items
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: items.length,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemBuilder: (context, index) {
+                        final targetIdx = pageIds.indexOf(_targetPageId);
+                        final isSelected =
+                            (targetIdx >= 0 ? targetIdx : 0) == index;
+                        final dest = items[index].destination;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: Bounceable(
+                            onTap: () {
+                              _changePage(items[index].id);
+                            },
+                            child: Container(
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? cs.primaryContainer.withValues(alpha: 128)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                children: [
+                                  // The Highlighting Line
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    width: 4,
+                                    height: isSelected ? 24 : 0,
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? cs.primary
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    child: AnimatedAlign(
-                                      duration:
-                                          const Duration(milliseconds: 300),
-                                      curve: Curves.easeInOutCubic,
-                                      alignment: _isExtended
-                                          ? Alignment.centerLeft
-                                          : Alignment.center,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Theme(
-                                            data: Theme.of(context).copyWith(
-                                              iconTheme: IconThemeData(
-                                                color: isSelected
-                                                    ? cs.primary
-                                                    : cs.onSurfaceVariant,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      child: AnimatedAlign(
+                                        duration:
+                                            const Duration(milliseconds: 300),
+                                        curve: Curves.easeInOutCubic,
+                                        alignment: _isExtended
+                                            ? Alignment.centerLeft
+                                            : Alignment.center,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Theme(
+                                              data: Theme.of(context).copyWith(
+                                                iconTheme: IconThemeData(
+                                                  color: isSelected
+                                                      ? cs.primary
+                                                      : cs.onSurfaceVariant,
+                                                ),
                                               ),
+                                              child: isSelected
+                                                  ? dest.selectedIcon
+                                                  : dest.icon,
                                             ),
-                                            child: isSelected
-                                                ? dest.selectedIcon
-                                                : dest.icon,
-                                          ),
-                                          AnimatedContainer(
-                                            duration: const Duration(
-                                                milliseconds: 300),
-                                            curve: Curves.easeInOutCubic,
-                                            width:
-                                                0, // removed width: _isExtended ? 12 : 0, as it's fixed below
-                                          ),
-                                          if (_isExtended)
-                                            const SizedBox(width: 12),
-                                          AnimatedContainer(
-                                            duration: const Duration(
-                                                milliseconds: 300),
-                                            curve: Curves.easeInOutCubic,
-                                            width: _isExtended ? 140 : 0,
-                                            child: ClipRect(
-                                              child: Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: Opacity(
-                                                  opacity:
-                                                      _isExtended ? 1.0 : 0.0,
-                                                  child: Text(
-                                                    (dest.label as Text).data ??
-                                                        '',
-                                                    style:
-                                                        tt.titleSmall?.copyWith(
-                                                      color: isSelected
-                                                          ? cs.primary
-                                                          : cs.onSurfaceVariant,
-                                                      fontWeight: isSelected
-                                                          ? FontWeight.bold
-                                                          : null,
+                                            AnimatedContainer(
+                                              duration: const Duration(
+                                                  milliseconds: 300),
+                                              curve: Curves.easeInOutCubic,
+                                              width:
+                                                  0, // removed width: _isExtended ? 12 : 0, as it's fixed below
+                                            ),
+                                            if (_isExtended)
+                                              const SizedBox(width: 12),
+                                            AnimatedContainer(
+                                              duration: const Duration(
+                                                  milliseconds: 300),
+                                              curve: Curves.easeInOutCubic,
+                                              width: _isExtended ? 140 : 0,
+                                              child: ClipRect(
+                                                child: Align(
+                                                  alignment:
+                                                      Alignment.centerLeft,
+                                                  child: Opacity(
+                                                    opacity:
+                                                        _isExtended ? 1.0 : 0.0,
+                                                    child: Text(
+                                                      (dest.label as Text)
+                                                              .data ??
+                                                          '',
+                                                      style: tt.titleSmall
+                                                          ?.copyWith(
+                                                        color: isSelected
+                                                            ? cs.primary
+                                                            : cs.onSurfaceVariant,
+                                                        fontWeight: isSelected
+                                                            ? FontWeight.bold
+                                                            : null,
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  // Settings
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Bounceable(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _NavSettingsPage(
+                              options: const [],
+                              initialOrder: const [],
+                              onImportWakeUp: _timetableController.importWakeUp,
+                              onClearTimetable:
+                                  _timetableController.clearTimetable,
+                              isTeacher: widget.session.isTeacher,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        height: 56,
+                        alignment: _isExtended
+                            ? Alignment.centerLeft
+                            : Alignment.center,
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHigh.withValues(alpha: 128),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 16 : 0,
+                              ),
+                              Icon(Icons.settings, color: cs.onSurfaceVariant),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 12 : 0,
+                              ),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 140 : 0,
+                                child: ClipRect(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Opacity(
+                                      opacity: _isExtended ? 1.0 : 0.0,
+                                      child: Text(
+                                        loc.t('设置', 'Settings'),
+                                        style: tt.titleSmall?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                            fontWeight: FontWeight.bold),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Settings
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Bounceable(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => _NavSettingsPage(
-                            options: const [],
-                            initialOrder: const [],
-                            onImportWakeUp: _timetableController.importWakeUp,
-                            onClearTimetable:
-                                _timetableController.clearTimetable,
-                            isTeacher: widget.session.isTeacher,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      height: 56,
-                      alignment:
-                          _isExtended ? Alignment.centerLeft : Alignment.center,
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHigh.withValues(alpha: 128),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOutCubic,
-                              width: _isExtended ? 16 : 0,
-                            ),
-                            Icon(Icons.settings, color: cs.onSurfaceVariant),
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOutCubic,
-                              width: _isExtended ? 12 : 0,
-                            ),
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOutCubic,
-                              width: _isExtended ? 140 : 0,
-                              child: ClipRect(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Opacity(
-                                    opacity: _isExtended ? 1.0 : 0.0,
-                                    child: Text(
-                                      loc.t('设置', 'Settings'),
-                                      style: tt.titleSmall?.copyWith(
-                                          color: cs.onSurfaceVariant,
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                // Logout
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Bounceable(
-                    onTap: widget.onLogout,
-                    child: Container(
-                      height: 56,
-                      alignment:
-                          _isExtended ? Alignment.centerLeft : Alignment.center,
-                      decoration: BoxDecoration(
-                        color: cs.errorContainer.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOutCubic,
-                              width: _isExtended ? 16 : 0,
-                            ),
-                            Icon(Icons.logout, color: cs.error),
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOutCubic,
-                              width: _isExtended ? 12 : 0,
-                            ),
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOutCubic,
-                              width: _isExtended ? 140 : 0,
-                              child: ClipRect(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Opacity(
-                                    opacity: _isExtended ? 1.0 : 0.0,
-                                    child: Text(
-                                      loc.t('退出登录', 'Sign out'),
-                                      style: tt.titleSmall?.copyWith(
-                                          color: cs.error,
-                                          fontWeight: FontWeight.bold),
+                  const SizedBox(height: 8),
+                  // Logout
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Bounceable(
+                      onTap: widget.onLogout,
+                      child: Container(
+                        height: 56,
+                        alignment: _isExtended
+                            ? Alignment.centerLeft
+                            : Alignment.center,
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 16 : 0,
+                              ),
+                              Icon(Icons.logout, color: cs.error),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 12 : 0,
+                              ),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOutCubic,
+                                width: _isExtended ? 140 : 0,
+                                child: ClipRect(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Opacity(
+                                      opacity: _isExtended ? 1.0 : 0.0,
+                                      child: Text(
+                                        loc.t('退出登录', 'Sign out'),
+                                        style: tt.titleSmall?.copyWith(
+                                            color: cs.error,
+                                            fontWeight: FontWeight.bold),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -736,6 +780,7 @@ class _MobileShellState extends State<_MobileShell> {
   bool _navPrefsLoaded = false;
   final Map<String, Widget> _pageCache = {};
   final TimetableController _timetableController = TimetableController();
+  LocaleProvider? _localeProvider;
 
   String _targetPageId = 'timetable';
   String _visiblePageId = 'timetable';
@@ -745,11 +790,21 @@ class _MobileShellState extends State<_MobileShell> {
 
   void _onPageReady(String id) {
     if (!mounted) return;
-    setState(() {
-      _readyPageIds.add(id);
-      if (_targetPageId == id && _visiblePageId != id) {
-        _visiblePageId = id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _readyPageIds.add(id);
+        });
       }
+    });
+  }
+
+  void _changePage(String id) {
+    setState(() {
+      _activePageId = id;
+      _targetPageId = id;
+      _visiblePageId = id;
+      _mountedPageIds.add(id);
     });
   }
 
@@ -757,16 +812,26 @@ class _MobileShellState extends State<_MobileShell> {
   void initState() {
     super.initState();
     widget.session.addListener(_onSessionChanged);
+    _localeProvider = Provider.of<LocaleProvider>(context, listen: false);
+    _localeProvider?.addListener(_onLocaleChanged);
     _loadNavPrefs();
   }
 
   @override
   void dispose() {
     widget.session.removeListener(_onSessionChanged);
+    _localeProvider?.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
   void _onSessionChanged() {
+    // Only rebuild if actual profile/state that affects Shell changes
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    // Force refresh all cached pages when language changes
+    _pageCache.clear();
     if (mounted) setState(() {});
   }
 
@@ -787,8 +852,9 @@ class _MobileShellState extends State<_MobileShell> {
       addFirst('class_attendance');
     } else {
       addFirst('contact');
-      addFirst('todo');
-      addFirst('attendance');
+      if (widget.session.canTakeAttendance) {
+        addFirst('attendance');
+      }
     }
 
     final out = <String>[...preferred];
@@ -868,13 +934,6 @@ class _MobileShellState extends State<_MobileShell> {
         icon: Icons.contact_page_rounded
       ),
     ];
-    if (widget.session.isTeacher) {
-      out.insert(1, (
-        id: 'todo',
-        label: loc.t('待办', 'Todos'),
-        icon: Icons.checklist_rtl_rounded
-      ));
-    }
     if (widget.session.canTakeAttendance) {
       out.add((
         id: 'attendance',
@@ -882,6 +941,13 @@ class _MobileShellState extends State<_MobileShell> {
         icon: Icons.emoji_people_rounded
       ));
     }
+
+    out.insert(1, (
+      id: 'todo',
+      label: loc.t('待办', 'Todos'),
+      icon: Icons.checklist_rtl_rounded
+    ));
+
     if (widget.session.canViewStudents) {
       out.add(
           (id: 'students', label: loc.t('学生', 'Students'), icon: Icons.people));
@@ -1031,10 +1097,6 @@ class _MobileShellState extends State<_MobileShell> {
     }
 
     _mountedPageIds.add(_targetPageId);
-    if (_readyPageIds.contains(_targetPageId)) {
-      _visiblePageId = _targetPageId;
-    }
-
     final children = pageIds
         .map((id) => _mountedPageIds.contains(id)
             ? _pageForId(id)
@@ -1051,10 +1113,8 @@ class _MobileShellState extends State<_MobileShell> {
           setState(() {
             _activePageId = 'timetable';
             _targetPageId = 'timetable';
-            _mountedPageIds.add(_targetPageId);
-            if (_readyPageIds.contains(_targetPageId)) {
-              _visiblePageId = _targetPageId;
-            }
+            _visiblePageId = 'timetable';
+            _mountedPageIds.add('timetable');
           });
           return;
         }
@@ -1092,14 +1152,7 @@ class _MobileShellState extends State<_MobileShell> {
               _openNavSettings();
               return;
             }
-            setState(() {
-              _activePageId = pageId;
-              _targetPageId = pageId;
-              _mountedPageIds.add(_targetPageId);
-              if (_readyPageIds.contains(_targetPageId)) {
-                _visiblePageId = _targetPageId;
-              }
-            });
+            _changePage(pageId);
           },
           onLogout: widget.onLogout,
         ),
@@ -1130,14 +1183,7 @@ class _MobileShellState extends State<_MobileShell> {
                     _openNavSettings();
                     return;
                   }
-                  setState(() {
-                    _activePageId = id;
-                    _targetPageId = id;
-                    _mountedPageIds.add(_targetPageId);
-                    if (_readyPageIds.contains(_targetPageId)) {
-                      _visiblePageId = _targetPageId;
-                    }
-                  });
+                  _changePage(id);
                 },
                 destinations: barItems.map((e) => e.destination).toList(),
               ),

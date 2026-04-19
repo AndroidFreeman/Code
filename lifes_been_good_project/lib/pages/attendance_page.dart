@@ -35,7 +35,7 @@ class AttendancePage extends StatefulWidget {
 class _AttendancePageState extends State<AttendancePage> {
   bool _loading = true;
   String _status = '';
-  bool _dataReady = false;
+  bool _dataReady = true;
 
   List<Course> _allCourses = [];
   List<TimetableItem> _allTimetable = [];
@@ -58,15 +58,25 @@ class _AttendancePageState extends State<AttendancePage> {
   TimetableItem? _activeCourse;
   TimetableItem? _nextCourse;
 
+  List<Map<String, String>> _allSessions = [];
+
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_onSessionChanged);
     _initData();
   }
 
   @override
   void dispose() {
+    widget.session.removeListener(_onSessionChanged);
     super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (mounted) {
+      _initData(isBackground: true);
+    }
   }
 
   static int _hhmmToMinutes(String hhmm) {
@@ -84,22 +94,20 @@ class _AttendancePageState extends State<AttendancePage> {
     return w;
   }
 
-  Future<void> _initData() async {
-    if (!widget.session.canTakeAttendance) {
-      final loc = Provider.of<LocaleProvider>(context, listen: false);
-      setState(() {
-        _loading = false;
-        _status = loc.t('当前角色无点名权限',
-            'Your role does not have permission to take attendance');
+  Future<void> _initData({bool isBackground = false}) async {
+    // Notify ShellPage that we are ready to show IMMEDIATELY to avoid transition lag
+    if (widget.onReady != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onReady?.call();
       });
-      widget.onReady?.call();
-      return;
     }
 
-    setState(() {
-      _loading = true;
-      _status = '';
-    });
+    // Completely avoid loading state if we already have some data
+    if (!isBackground && !_dataReady) {
+      setState(() {
+        _status = '';
+      });
+    }
 
     // Ensure data schema is up-to-date
     // Removed old schema update methods
@@ -141,21 +149,48 @@ class _AttendancePageState extends State<AttendancePage> {
         final uniqueStudents = <String, Student>{};
         for (final e in items) {
           final s = Student.fromJson(e);
-          uniqueStudents[s.studentNo] = s;
+          final key = s.studentNo.trim().toLowerCase();
+          if (key.isNotEmpty) {
+            // Keep the one that has a position if possible
+            if (uniqueStudents.containsKey(key)) {
+              if (s.position.isNotEmpty &&
+                  uniqueStudents[key]!.position.isEmpty) {
+                uniqueStudents[key] = s;
+              }
+            } else {
+              uniqueStudents[key] = s;
+            }
+          } else {
+            // If no student number, use ID as fallback for uniqueness
+            uniqueStudents[s.id] = s;
+          }
         }
         _allStudents = uniqueStudents.values.toList();
+      }
+
+      final sessionsRes = await widget.session.features
+          .csvOp(action: 'read', file: 'attendance_sessions.csv');
+
+      if (sessionsRes['ok'] == true) {
+        final items =
+            ((sessionsRes['data'] ?? const {})['items'] as List?) ?? [];
+        _allSessions =
+            items.map((e) => (e as Map).cast<String, String>()).toList();
       }
 
       if (!mounted) return;
       await _refreshDisplay();
       if (!mounted) return;
       setState(() {
+        _loading = false; // Always clear loading after success
         _dataReady = true;
       });
+      widget.onReady?.call();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _dataReady = true;
         _status = e.toString();
       });
       widget.onReady?.call();
@@ -184,6 +219,8 @@ class _AttendancePageState extends State<AttendancePage> {
     final relevantTt = _allTimetable.where((e) {
       final isMyClass = e.ownerProfileId == 'class_$_selectedClass';
       final isMyCourse = e.createdByProfileId == widget.session.profile.id;
+      // Also include courses that belong to the current class even if created by someone else
+      // This allows cadres to take attendance for courses in their class.
       return isMyClass || (widget.session.isTeacher && isMyCourse);
     }).toList();
 
@@ -251,7 +288,7 @@ class _AttendancePageState extends State<AttendancePage> {
     final marks = <String, String>{};
     final studentsOnLeaveToday = <String>{};
 
-    if (_selectedCourse != null) {
+    if (_selectedCourse != null && _sessionId == null) {
       try {
         final sessionsFile =
             File('${widget.session.dataDir}/attendance_sessions.csv');
@@ -325,11 +362,37 @@ class _AttendancePageState extends State<AttendancePage> {
           }
         }
       } catch (_) {}
+    } else if (_sessionId != null) {
+      // Load specific session
+      restoredSessionId = _sessionId;
+      try {
+        final recordsFile =
+            File('${widget.session.dataDir}/attendance_records.csv');
+        if (await recordsFile.exists()) {
+          final content = await recordsFile.readAsString();
+          final lines =
+              content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+          if (lines.length > 1) {
+            for (var i = 1; i < lines.length; i++) {
+              final parts = lines[i].split(',');
+              if (parts.length >= 4) {
+                final sid = parts[1];
+                final studentId = parts[2];
+                final status = parts[3];
+                if (sid == restoredSessionId) {
+                  marks[studentId] = status;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
     }
 
     if (!mounted) return;
     setState(() {
       _loading = false;
+      _dataReady = true;
       _sessionId = restoredSessionId;
       _marking.clear();
       for (final s in _displayStudents) {
@@ -345,19 +408,39 @@ class _AttendancePageState extends State<AttendancePage> {
     }
   }
 
-  Future<void> _startSession() async {
+  int _calculateCurrentWeek() {
+    final now = DateTime.now();
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final diff = now.difference(firstWeekStart).inDays;
+    if (diff < 0) return 1;
+    final week = (diff / 7).floor() + 1;
+    return week.clamp(1, 20);
+  }
+
+  Future<void> _startSession({bool silent = false}) async {
     if (_selectedCourse == null) return;
 
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _status = '';
-    });
+    if (!silent) {
+      if (!mounted) return;
+      setState(() {
+        _loading = true;
+        _status = '';
+      });
+    }
 
     try {
+      int? period;
+      if (_selectedCourse!.id == _activeCourse?.courseId) {
+        period = _activeCourse!.startPeriod;
+      } else if (_selectedCourse!.id == _nextCourse?.courseId) {
+        period = _nextCourse!.startPeriod;
+      }
+
       final res = await widget.session.features.startAttendanceSession(
         courseId: _selectedCourse!.id,
         createdByProfileId: widget.session.profile.id,
+        week: _calculateCurrentWeek(),
+        period: period,
       );
 
       if (res['ok'] == true) {
@@ -385,7 +468,7 @@ class _AttendancePageState extends State<AttendancePage> {
 
   Future<void> _submitMark(Student s, String status) async {
     if (_sessionId == null) {
-      await _startSession();
+      await _startSession(silent: true);
     }
     if (_sessionId == null) return;
 
@@ -476,6 +559,81 @@ class _AttendancePageState extends State<AttendancePage> {
         !isPushed &&
         !(Platform.isAndroid && isTablet);
 
+    if (!widget.session.canTakeAttendance) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(loc.t('点名', 'Roll Call')),
+          leading: isPushed
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                )
+              : null,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_person_outlined, size: 64, color: cs.error),
+              const SizedBox(height: 16),
+              Text(
+                loc.t('当前角色无点名权限',
+                    'Your role does not have permission to take attendance'),
+                style: tt.titleMedium?.copyWith(color: cs.error),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${loc.t('当前职位', 'Current Position')}: ${widget.session.studentPosition.isEmpty ? loc.t('无', 'None') : widget.session.studentPosition}',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${loc.t('账号信息', 'Account Info')}: ${widget.session.profile.studentNo.isNotEmpty ? widget.session.profile.studentNo : widget.session.profile.staffNo} (${widget.session.profile.role})',
+                style: tt.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant, fontSize: 10),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${loc.t('真实姓名', 'Real Name')}: ${widget.session.profile.realName}',
+                style: tt.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant, fontSize: 10),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  setState(() => _loading = true);
+                  try {
+                    final pos = await LocalProfiles.loadStudentPosition(
+                      dataDir: widget.session.dataDir,
+                      profile: widget.session.profile,
+                    );
+                    if (!mounted) return;
+                    widget.session.profile =
+                        widget.session.profile.copyWith(position: pos);
+                    showExpressiveSnackBar(
+                        context, loc.t('已刷新权限', 'Permissions refreshed'));
+                  } catch (e) {
+                    if (!mounted) return;
+                    showExpressiveSnackBar(context, e.toString());
+                  } finally {
+                    if (mounted) setState(() => _loading = false);
+                  }
+                },
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(loc.t('刷新职位信息', 'Refresh Position')),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -532,47 +690,73 @@ class _AttendancePageState extends State<AttendancePage> {
             ),
         ],
       ),
-      body: (!_dataReady || _loading)
+      body: !_dataReady
           ? loader
-          : CustomScrollView(
-              key: const ValueKey('content'),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_status.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            child: Text(_status,
-                                style: TextStyle(color: cs.error)),
-                          ),
-                        _buildDashboardGroup(cs, tt),
-                        _buildBatchBar(cs, tt),
-                      ],
-                    ),
-                  ),
-                ),
-                if (_displayStudents.isEmpty)
-                  SliverFillRemaining(
-                    child: Center(
-                      child: Text(loc.t('该班级暂无学生', 'No students in this class'),
-                          style: tt.bodyLarge),
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) =>
-                            _buildStudentCard(_displayStudents[index], cs, tt),
-                        childCount: _displayStudents.length,
+          : Stack(
+              children: [
+                CustomScrollView(
+                  key: const ValueKey('content'),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_status.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                child: Text(_status,
+                                    style: TextStyle(color: cs.error)),
+                              ),
+                            _buildDashboardGroup(cs, tt),
+                            _buildBatchBar(cs, tt),
+                          ],
+                        ),
                       ),
                     ),
+                    if (_displayStudents.isEmpty && !_loading)
+                      SliverFillRemaining(
+                        child: Center(
+                          child: Text(
+                              loc.t('该班级暂无学生', 'No students in this class'),
+                              style: tt.bodyLarge),
+                        ),
+                      )
+                    else if (_displayStudents.isEmpty && _loading)
+                      SliverFillRemaining(
+                        child: const SizedBox.shrink(),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final s = _displayStudents[index];
+                              return _StudentCard(
+                                key: ValueKey(s.id),
+                                student: s,
+                                mark: _marking[s.id] ?? '',
+                                onMark: (status) {
+                                  _marking[s.id] = status;
+                                  _submitMark(s, status);
+                                },
+                              );
+                            },
+                            childCount: _displayStudents.length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (_loading)
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: LinearProgressIndicator(),
                   ),
               ],
             ),
@@ -591,8 +775,238 @@ class _AttendancePageState extends State<AttendancePage> {
           _buildTimeInfoSection(cs, tt),
           const Divider(height: 1, indent: 16, endIndent: 16),
           _buildHeaderSection(cs, tt),
+          const Divider(height: 1, indent: 16, endIndent: 16),
+          _buildRecentHistorySection(cs, tt),
         ],
       ),
+    );
+  }
+
+  Widget _buildRecentHistorySection(ColorScheme cs, TextTheme tt) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final now = DateTime.now();
+    bool isToday(String dateStr) {
+      final s = dateStr.trim();
+      if (s.isEmpty) return false;
+      try {
+        final dt = DateTime.parse(s).toLocal();
+        return dt.year == now.year &&
+            dt.month == now.month &&
+            dt.day == now.day;
+      } catch (_) {
+        return s.startsWith(now.toIso8601String().substring(0, 10));
+      }
+    }
+
+    final todaySessions = _allSessions.where((s) {
+      final startedAt = s['started_at'] ?? '';
+      return isToday(startedAt);
+    }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(loc.t('今日点名记录', 'Today\'s Attendance'),
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: _showFullHistory,
+                child: Text(loc.t('查看全部', 'View All')),
+              ),
+            ],
+          ),
+          if (todaySessions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(loc.t('今日暂无记录', 'No records today'),
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            )
+          else
+            ...todaySessions.take(3).map((s) {
+              final course =
+                  _allCourses.where((c) => c.id == s['course_id']).firstOrNull;
+              final cName = course?.courseName ??
+                  s['course_id'] ??
+                  loc.t('未知课程', 'Unknown Course');
+              final ttItem = _allTimetable
+                  .where((t) => t.courseId == s['course_id'])
+                  .firstOrNull;
+              String className = '';
+              if (ttItem != null &&
+                  ttItem.ownerProfileId.startsWith('class_')) {
+                className = ttItem.ownerProfileId.replaceFirst('class_', '');
+              }
+              String date = '';
+              String time = '';
+              try {
+                final dt = DateTime.parse(s['started_at']!).toLocal();
+                date =
+                    '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+                time =
+                    '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              } catch (_) {
+                date = s['started_at']?.split('T').first ?? '';
+                time = s['started_at']?.split('T').last.substring(0, 5) ?? '';
+              }
+              final displayName = className.isNotEmpty
+                  ? '$className-$cName-$date'
+                  : '$cName-$date';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading:
+                    Icon(Icons.history_rounded, size: 20, color: cs.primary),
+                title: Text(displayName, style: tt.bodyMedium),
+                subtitle: Text(time, style: tt.labelSmall),
+                trailing:
+                    Icon(Icons.chevron_right, size: 16, color: cs.outline),
+                onTap: () {
+                  setState(() {
+                    _sessionId = s['id'];
+                    _selectedCourse = _allCourses.firstWhere(
+                        (c) => c.id == s['course_id'],
+                        orElse: () => _selectedCourse!);
+                  });
+                  _initData();
+                },
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  void _showFullHistory() {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    final groupedSessions = <String, List<Map<String, String>>>{};
+    for (final s in _allSessions) {
+      String date = 'Unknown';
+      try {
+        final dt = DateTime.parse(s['started_at']!).toLocal();
+        date =
+            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+      } catch (_) {
+        date = s['started_at']?.split('T').first ?? 'Unknown';
+      }
+      groupedSessions.putIfAbsent(date, () => []).add(s);
+    }
+    final sortedDates = groupedSessions.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(loc.t('全部点名记录', 'All Attendance History'),
+                      style: tt.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold)),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: sortedDates.length,
+                    itemBuilder: (context, index) {
+                      final date = sortedDates[index];
+                      final sessions = groupedSessions[date]!;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 8),
+                            color: cs.surfaceContainerHigh,
+                            child: Text(date,
+                                style: tt.labelLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: cs.primary)),
+                          ),
+                          ...sessions.map((s) {
+                            final course = _allCourses
+                                .where((c) => c.id == s['course_id'])
+                                .firstOrNull;
+                            final cName = course?.courseName ??
+                                s['course_id'] ??
+                                loc.t('未知课程', 'Unknown Course');
+                            final ttItem = _allTimetable
+                                .where((t) => t.courseId == s['course_id'])
+                                .firstOrNull;
+                            String className = '';
+                            if (ttItem != null &&
+                                ttItem.ownerProfileId.startsWith('class_')) {
+                              className = ttItem.ownerProfileId
+                                  .replaceFirst('class_', '');
+                            }
+                            String date = '';
+                            String time = '';
+                            try {
+                              final dt =
+                                  DateTime.parse(s['started_at']!).toLocal();
+                              date =
+                                  '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+                              time =
+                                  '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+                            } catch (_) {
+                              date = s['started_at']?.split('T').first ?? '';
+                              time = s['started_at']
+                                      ?.split('T')
+                                      .last
+                                      .substring(0, 5) ??
+                                  '';
+                            }
+                            final displayName = className.isNotEmpty
+                                ? '$className-$cName-$date'
+                                : '$cName-$date';
+                            return ListTile(
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 24),
+                              title: Text(displayName),
+                              subtitle: Text(time),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                Navigator.pop(ctx);
+                                setState(() {
+                                  _sessionId = s['id'];
+                                  _selectedCourse = _allCourses.firstWhere(
+                                      (c) => c.id == s['course_id'],
+                                      orElse: () => _selectedCourse!);
+                                });
+                                _initData();
+                              },
+                            );
+                          }),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -673,6 +1087,7 @@ class _AttendancePageState extends State<AttendancePage> {
               if (course != null) {
                 setState(() {
                   _selectedCourse = course;
+                  _sessionId = null; // Reset session when changing course
                   _loading = true;
                 });
                 _refreshDisplay();
@@ -729,10 +1144,48 @@ class _AttendancePageState extends State<AttendancePage> {
       ),
     );
   }
+}
 
-  Widget _buildStudentCard(Student s, ColorScheme cs, TextTheme tt) {
-    final mark = _marking[s.id] ?? '';
+class _StudentCard extends StatefulWidget {
+  final Student student;
+  final String mark;
+  final Function(String) onMark;
+
+  const _StudentCard({
+    super.key,
+    required this.student,
+    required this.mark,
+    required this.onMark,
+  });
+
+  @override
+  State<_StudentCard> createState() => _StudentCardState();
+}
+
+class _StudentCardState extends State<_StudentCard> {
+  late String _currentMark;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentMark = widget.mark;
+  }
+
+  @override
+  void didUpdateWidget(_StudentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.mark != oldWidget.mark) {
+      _currentMark = widget.mark;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.student;
+    final mark = _currentMark;
     final isMarked = mark.isNotEmpty;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     final loc = Provider.of<LocaleProvider>(context);
     final isDesktop = MediaQuery.of(context).size.width >= 600;
 
@@ -743,11 +1196,9 @@ class _AttendancePageState extends State<AttendancePage> {
           onPressed: () {
             final newMark = isSelected ? '' : value;
             setState(() {
-              _marking[s.id] = newMark;
+              _currentMark = newMark;
             });
-            if (newMark.isNotEmpty) {
-              _submitMark(s, newMark);
-            }
+            widget.onMark(newMark);
           },
           style: FilledButton.styleFrom(
             backgroundColor:
@@ -773,8 +1224,7 @@ class _AttendancePageState extends State<AttendancePage> {
     }
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.fastOutSlowIn,
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isMarked
@@ -840,99 +1290,29 @@ class _AttendancePageState extends State<AttendancePage> {
                         ],
                       ),
                     ),
-                    _buildStatusChip(mark, cs, loc),
                   ],
                 ),
                 const SizedBox(height: 20),
-                if (isDesktop)
-                  Row(
-                    children: [
-                      buildStatusButton('present', Icons.check_circle_rounded,
-                          loc.t('出勤', 'Present')),
-                      const SizedBox(width: 8),
-                      buildStatusButton(
-                          'late', Icons.schedule_rounded, loc.t('迟到', 'Late')),
-                      const SizedBox(width: 8),
-                      buildStatusButton('absent', Icons.cancel_rounded,
-                          loc.t('缺勤', 'Absent')),
-                      const SizedBox(width: 8),
-                      buildStatusButton('leave', Icons.beach_access_rounded,
-                          loc.t('请假', 'Leave')),
-                    ],
-                  )
-                else
-                  Column(
-                    children: [
-                      Row(
-                        children: [
-                          buildStatusButton(
-                              'present',
-                              Icons.check_circle_rounded,
-                              loc.t('出勤', 'Present')),
-                          const SizedBox(width: 8),
-                          buildStatusButton('late', Icons.schedule_rounded,
-                              loc.t('迟到', 'Late')),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          buildStatusButton('absent', Icons.cancel_rounded,
-                              loc.t('缺勤', 'Absent')),
-                          const SizedBox(width: 8),
-                          buildStatusButton('leave', Icons.beach_access_rounded,
-                              loc.t('请假', 'Leave')),
-                        ],
-                      ),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    buildStatusButton('present', Icons.check_circle_rounded,
+                        loc.t('已到', 'Present')),
+                    const SizedBox(width: 8),
+                    buildStatusButton('late', Icons.access_time_filled_rounded,
+                        loc.t('迟到', 'Late')),
+                    const SizedBox(width: 8),
+                    buildStatusButton(
+                        'absent', Icons.cancel_rounded, loc.t('缺勤', 'Absent')),
+                    const SizedBox(width: 8),
+                    buildStatusButton('leave', Icons.event_busy_rounded,
+                        loc.t('请假', 'Leave')),
+                  ],
+                ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildStatusChip(String mark, ColorScheme cs, LocaleProvider loc) {
-    Color color;
-    String label;
-    switch (mark) {
-      case 'present':
-        color = Colors.green;
-        label = loc.t('已到', 'Present');
-        break;
-      case 'late':
-        color = Colors.orange;
-        label = loc.t('迟到', 'Late');
-        break;
-      case 'absent':
-        color = Colors.red;
-        label = loc.t('缺勤', 'Absent');
-        break;
-      case 'leave':
-        color = Colors.blue;
-        label = loc.t('请假', 'Leave');
-        break;
-      default:
-        color = cs.outline;
-        label = loc.t('未记', 'Unmarked');
-    }
-
-    final textColor = Color.lerp(color, cs.onSurface, 0.75) ?? cs.onSurface;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 26),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 128)),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color: textColor, fontSize: 12, fontWeight: FontWeight.bold)),
     );
   }
 }

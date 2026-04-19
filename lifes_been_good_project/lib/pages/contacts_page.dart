@@ -25,13 +25,11 @@ class _ContactsPageState extends State<ContactsPage> {
   bool _loading = true;
   String _status = '';
   List<Profile> _profiles = const [];
-  Set<String> _myContactProfileIds = {};
+  bool _dataReady = true;
+  Set<String> _myPinnedProfileIds = {};
   Map<String, ImageProvider?> _avatarProviders = const {};
 
   bool _showFabMenu = false;
-
-  static const _contactsHeader =
-      'id,owner_profile_id,contact_profile_id,alias,phone';
 
   String? _resolveAvatarUrlOrPath(String raw) {
     final v = raw.trim();
@@ -69,12 +67,25 @@ class _ContactsPageState extends State<ContactsPage> {
   @override
   void initState() {
     super.initState();
+    widget.session.addListener(_onSessionChanged);
     _refresh();
   }
 
-  Future<Set<String>> _loadMyContacts() async {
+  @override
+  void dispose() {
+    widget.session.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (mounted) {
+      _refresh(silent: true);
+    }
+  }
+
+  Future<Set<String>> _loadPinnedContacts() async {
     final res = await widget.session.features
-        .csvOp(action: 'read', file: 'contacts.csv');
+        .csvOp(action: 'read', file: 'pinned_contacts.csv');
     if (res['ok'] != true) return {};
     final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
     final rows = items.map((e) => (e as Map).cast<String, String>()).toList();
@@ -89,15 +100,14 @@ class _ContactsPageState extends State<ContactsPage> {
     return out;
   }
 
-  Future<void> _addContact(Profile p) async {
+  Future<void> _addPin(Profile p) async {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
     final ownerId = widget.session.profile.id.trim();
     final contactId = p.id.trim();
     if (ownerId.isEmpty || contactId.isEmpty) return;
-    if (ownerId == contactId) return;
 
     final res = await widget.session.features
-        .csvOp(action: 'read', file: 'contacts.csv');
+        .csvOp(action: 'read', file: 'pinned_contacts.csv');
     final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
     final rows = items.map((e) => (e as Map).cast<String, String>()).toList();
 
@@ -106,36 +116,33 @@ class _ContactsPageState extends State<ContactsPage> {
         (r['contact_profile_id'] ?? '').trim() == contactId);
 
     if (!already) {
-      final id = 'ct_${DateTime.now().millisecondsSinceEpoch}';
-      const alias = '';
-      final phone = (p.phone).replaceAll(',', '');
       rows.add({
-        'id': id,
+        'id': 'pin_${DateTime.now().millisecondsSinceEpoch}',
         'owner_profile_id': ownerId,
         'contact_profile_id': contactId,
-        'alias': alias,
-        'phone': phone,
       });
-      final headers = _contactsHeader.split(',');
       await widget.session.features.csvOp(
-          action: 'write', file: 'contacts.csv', headers: headers, rows: rows);
+          action: 'write',
+          file: 'pinned_contacts.csv',
+          headers: ['id', 'owner_profile_id', 'contact_profile_id'],
+          rows: rows);
 
       if (!mounted) return;
       setState(() {
-        _myContactProfileIds = {..._myContactProfileIds, contactId};
-        _status = loc.t('已添加到通讯录', 'Added to contacts');
+        _myPinnedProfileIds = {..._myPinnedProfileIds, contactId};
+        _status = ''; // Removed 'Pinned' text
       });
     }
   }
 
-  Future<void> _removeContact(Profile p) async {
+  Future<void> _removePin(Profile p) async {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
     final ownerId = widget.session.profile.id.trim();
     final contactId = p.id.trim();
     if (ownerId.isEmpty || contactId.isEmpty) return;
 
     final res = await widget.session.features
-        .csvOp(action: 'read', file: 'contacts.csv');
+        .csvOp(action: 'read', file: 'pinned_contacts.csv');
     final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
     final rows = items.map((e) => (e as Map).cast<String, String>()).toList();
 
@@ -143,25 +150,46 @@ class _ContactsPageState extends State<ContactsPage> {
         (r['owner_profile_id'] ?? '').trim() == ownerId &&
         (r['contact_profile_id'] ?? '').trim() == contactId);
 
-    final headers = _contactsHeader.split(',');
     await widget.session.features.csvOp(
-        action: 'write', file: 'contacts.csv', headers: headers, rows: rows);
+        action: 'write',
+        file: 'pinned_contacts.csv',
+        headers: ['id', 'owner_profile_id', 'contact_profile_id'],
+        rows: rows);
 
     if (!mounted) return;
-    final next = {..._myContactProfileIds};
+    final next = {..._myPinnedProfileIds};
     next.remove(contactId);
     setState(() {
-      _myContactProfileIds = next;
-      _status = loc.t('已从通讯录移除', 'Removed from contacts');
+      _myPinnedProfileIds = next;
+      _status = ''; // Removed 'Unpinned' text
     });
   }
 
-  Future<void> _toggleContact(Profile p) async {
-    if (_myContactProfileIds.contains(p.id.trim())) {
-      await _removeContact(p);
+  Future<void> _togglePin(Profile p) async {
+    final contactId = p.id.trim();
+    if (_myPinnedProfileIds.contains(contactId)) {
+      await _removePin(p);
     } else {
-      await _addContact(p);
+      await _addPin(p);
     }
+
+    // Re-sort profiles locally for immediate feedback with animation
+    final nextProfiles = List<Profile>.from(_profiles);
+    nextProfiles.sort((a, b) {
+      final aPinned = _myPinnedProfileIds.contains(a.id);
+      final bPinned = _myPinnedProfileIds.contains(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      if (a.role == 'teacher' && b.role != 'teacher') return -1;
+      if (a.role != 'teacher' && b.role == 'teacher') return 1;
+
+      return a.displayWithRealName.compareTo(b.displayWithRealName);
+    });
+
+    setState(() {
+      _profiles = nextProfiles;
+    });
   }
 
   Future<void> _openAddContactPicker() async {
@@ -225,16 +253,24 @@ class _ContactsPageState extends State<ContactsPage> {
     );
     noCtrl.dispose();
     if (selected == null) return;
-    await _addContact(selected);
+    await _addPin(selected);
   }
 
-  Future<void> _refresh() async {
-    setState(() {
-      _loading = true;
-      _status = '';
-    });
+  Future<void> _refresh({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _status = '';
+      });
+    } else {
+      setState(() {
+        _loading = true;
+        _status = '';
+      });
+    }
 
     try {
+      _myPinnedProfileIds = await _loadPinnedContacts();
       List<String> classes = [];
       if (widget.session.isTeacher) {
         classes = await LocalProfiles.getTeacherClasses(
@@ -293,22 +329,25 @@ class _ContactsPageState extends State<ContactsPage> {
         }
       }
 
-      // Sort: Teachers first, then by account number
+      // Sort: Pinned first, then Teachers first, then by name
       filteredProfiles.sort((a, b) {
+        final aPinned = _myPinnedProfileIds.contains(a.id);
+        final bPinned = _myPinnedProfileIds.contains(b.id);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+
         if (a.role == 'teacher' && b.role != 'teacher') return -1;
         if (a.role != 'teacher' && b.role == 'teacher') return 1;
-        final aNo = a.role == 'teacher' ? a.staffNo : a.studentNo;
-        final bNo = b.role == 'teacher' ? b.staffNo : b.studentNo;
-        return aNo.compareTo(bNo);
+
+        // Secondary sort by name for a better user experience
+        return a.displayWithRealName.compareTo(b.displayWithRealName);
       });
 
       if (!mounted) return;
-      final myContactIds = await _loadMyContacts();
       final avatarProviders = await _buildAvatarProviders(filteredProfiles);
       setState(() {
         _loading = false;
         _profiles = filteredProfiles;
-        _myContactProfileIds = myContactIds;
         _avatarProviders = avatarProviders;
       });
       widget.onReady?.call();
@@ -366,138 +405,170 @@ class _ContactsPageState extends State<ContactsPage> {
             : const SizedBox.shrink(),
         centerTitle: false,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            if (_status.trim().isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: cs.errorContainer,
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child:
-                    Text(_status, style: TextStyle(color: cs.onErrorContainer)),
-              ),
-            Expanded(
-              child: _loading
-                  ? const SizedBox.shrink()
-                  : _profiles.isEmpty
+      body: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: [
+                if (_status.trim().isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: Text(_status,
+                        style: TextStyle(color: cs.onErrorContainer)),
+                  ),
+                Expanded(
+                  child: (_profiles.isEmpty && !_loading)
                       ? Center(
                           child: Text(loc.t('暂无联系人', 'No contacts'),
                               style: tt.bodyLarge))
-                      : ListView.builder(
-                          padding: const EdgeInsets.only(top: 8, bottom: 80),
-                          itemCount: _profiles.length,
-                          itemBuilder: (context, index) {
-                            final profile = _profiles[index];
-                            final isTeacher = profile.role == 'teacher';
-                            final avatar = _avatarProviders[profile.id];
+                      : (_profiles.isEmpty && _loading)
+                          ? const SizedBox.shrink()
+                          : ListView.builder(
+                              padding:
+                                  const EdgeInsets.only(top: 8, bottom: 80),
+                              itemCount: _profiles.length,
+                              itemBuilder: (context, index) {
+                                final profile = _profiles[index];
+                                final isTeacher = profile.role == 'teacher';
+                                final avatar = _avatarProviders[profile.id];
 
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              child: Bounceable(
-                                onTap: () => _showContactDetails(
-                                    context, profile, cs, tt),
-                                child: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: cs.surface,
-                                    borderRadius: BorderRadius.circular(24),
-                                    border: Border.all(
-                                        color: cs.outlineVariant
-                                            .withValues(alpha: 0.5)),
+                                return Container(
+                                  key: ValueKey(profile.id),
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  child: Bounceable(
+                                    onTap: () => _showContactDetails(
+                                        context, profile, cs, tt),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: cs.surface,
+                                        borderRadius: BorderRadius.circular(24),
+                                        border: Border.all(
+                                            color: cs.outlineVariant
+                                                .withValues(alpha: 0.5)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 56,
+                                            height: 56,
+                                            decoration: BoxDecoration(
+                                              color: isTeacher
+                                                  ? cs.secondaryContainer
+                                                  : cs.primaryContainer,
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              image: avatar != null
+                                                  ? DecorationImage(
+                                                      image: avatar,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : null,
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: avatar == null
+                                                ? Text(
+                                                    profile.displayName
+                                                            .isNotEmpty
+                                                        ? profile.displayName
+                                                            .substring(0, 1)
+                                                        : '?',
+                                                    style:
+                                                        tt.titleLarge?.copyWith(
+                                                      color: isTeacher
+                                                          ? cs.onSecondaryContainer
+                                                          : cs.onPrimaryContainer,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  )
+                                                : null,
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                    profile.displayWithRealName,
+                                                    style: tt.titleMedium
+                                                        ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold)),
+                                                Text(
+                                                    isTeacher
+                                                        ? '${loc.t('工号', 'Staff ID')}: ${profile.staffNo}'
+                                                        : '${loc.t('学号', 'Student ID')}: ${profile.studentNo}',
+                                                    style: tt.bodySmall?.copyWith(
+                                                        color: cs
+                                                            .onSurfaceVariant)),
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            onPressed: () =>
+                                                _togglePin(profile),
+                                            icon: AnimatedSwitcher(
+                                              duration: const Duration(
+                                                  milliseconds: 300),
+                                              transitionBuilder:
+                                                  (child, animation) {
+                                                return ScaleTransition(
+                                                  scale: animation,
+                                                  child: child,
+                                                );
+                                              },
+                                              child: Icon(
+                                                _myPinnedProfileIds
+                                                        .contains(profile.id)
+                                                    ? Icons.star_rounded
+                                                    : Icons
+                                                        .star_outline_rounded,
+                                                key: ValueKey(
+                                                    _myPinnedProfileIds
+                                                        .contains(profile.id)),
+                                              ),
+                                            ),
+                                            color: _myPinnedProfileIds
+                                                    .contains(profile.id)
+                                                ? cs.primary
+                                                : cs.onSurfaceVariant
+                                                    .withValues(alpha: 0.7),
+                                            tooltip: _myPinnedProfileIds
+                                                    .contains(profile.id)
+                                                ? loc.t('取消置顶', 'Unpin')
+                                                : loc.t('置顶', 'Pin'),
+                                          ),
+                                          Icon(Icons.chevron_right_rounded,
+                                              color: cs.onSurfaceVariant
+                                                  .withValues(alpha: 0.5)),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 56,
-                                        height: 56,
-                                        decoration: BoxDecoration(
-                                          color: isTeacher
-                                              ? cs.secondaryContainer
-                                              : cs.primaryContainer,
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          image: avatar != null
-                                              ? DecorationImage(
-                                                  image: avatar,
-                                                  fit: BoxFit.cover,
-                                                )
-                                              : null,
-                                        ),
-                                        alignment: Alignment.center,
-                                        child: avatar == null
-                                            ? Text(
-                                                profile.displayName.isNotEmpty
-                                                    ? profile.displayName
-                                                        .substring(0, 1)
-                                                    : '?',
-                                                style: tt.titleLarge?.copyWith(
-                                                  color: isTeacher
-                                                      ? cs.onSecondaryContainer
-                                                      : cs.onPrimaryContainer,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              )
-                                            : null,
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(profile.displayWithRealName,
-                                                style: tt.titleMedium?.copyWith(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                            Text(
-                                                isTeacher
-                                                    ? '${loc.t('工号', 'Staff ID')}: ${profile.staffNo}'
-                                                    : '${loc.t('学号', 'Student ID')}: ${profile.studentNo}',
-                                                style: tt.bodySmall?.copyWith(
-                                                    color:
-                                                        cs.onSurfaceVariant)),
-                                          ],
-                                        ),
-                                      ),
-                                      IconButton(
-                                        onPressed: () =>
-                                            _toggleContact(profile),
-                                        icon: Icon(
-                                          _myContactProfileIds
-                                                  .contains(profile.id)
-                                              ? Icons.star_rounded
-                                              : Icons.star_outline_rounded,
-                                        ),
-                                        color: _myContactProfileIds
-                                                .contains(profile.id)
-                                            ? cs.primary
-                                            : cs.onSurfaceVariant
-                                                .withValues(alpha: 0.7),
-                                        tooltip: _myContactProfileIds
-                                                .contains(profile.id)
-                                            ? loc.t('从通讯录移除',
-                                                'Remove from contacts')
-                                            : loc.t(
-                                                '添加到通讯录', 'Add to contacts'),
-                                      ),
-                                      Icon(Icons.chevron_right_rounded,
-                                          color: cs.onSurfaceVariant
-                                              .withValues(alpha: 0.5)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                                );
+                              },
+                            ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          if (_loading)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
       ),
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,

@@ -108,7 +108,6 @@ class _TimetablePageState extends State<TimetablePage> {
   static const int _maxVisiblePeriod = 10;
 
   late PageController _pageController;
-  final ScrollController _gridScrollController = ScrollController();
 
   @override
   void initState() {
@@ -117,6 +116,10 @@ class _TimetablePageState extends State<TimetablePage> {
     _currentWeekN = ValueNotifier<int>(_currentWeek);
     _viewingProfileId = widget.session.profile.id;
     _pageController = PageController(initialPage: _currentWeek - 1);
+
+    // Listen for global data changes for seamless refresh
+    widget.session.addListener(_onGlobalDataChanged);
+
     Future.microtask(() async {
       await _loadUiPrefs();
       if (!mounted) return;
@@ -129,6 +132,7 @@ class _TimetablePageState extends State<TimetablePage> {
 
   @override
   void dispose() {
+    widget.session.removeListener(_onGlobalDataChanged);
     if (widget.controller?.importWakeUp == _importWakeupSchedule) {
       widget.controller?.importWakeUp = null;
     }
@@ -138,7 +142,6 @@ class _TimetablePageState extends State<TimetablePage> {
     widget.controller?.addCourse = null;
     _currentWeekN.dispose();
     _pageController.dispose();
-    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -259,13 +262,18 @@ class _TimetablePageState extends State<TimetablePage> {
     } catch (_) {}
   }
 
-  Future<void> _refresh() async {
-    setState(() {
-      _status = '';
-    });
+  void _onGlobalDataChanged() {
+    if (mounted) {
+      _refresh(isBackground: true);
+    }
+  }
 
-    // Ensure data schema is up-to-date
-    // Removed old schema update methods
+  Future<void> _refresh({bool isBackground = false}) async {
+    if (!isBackground) {
+      setState(() {
+        _status = '';
+      });
+    }
 
     if (widget.session.isTeacher) {
       _teacherClasses = await LocalProfiles.getTeacherClasses(
@@ -294,9 +302,11 @@ class _TimetablePageState extends State<TimetablePage> {
       final msg =
           ((coursesRes['error'] ?? const {}) as Map)['message']?.toString() ??
               'unknown error';
-      setState(() {
-        _status = msg;
-      });
+      if (mounted) {
+        setState(() {
+          _status = msg;
+        });
+      }
       widget.onReady?.call();
       return;
     }
@@ -359,6 +369,7 @@ class _TimetablePageState extends State<TimetablePage> {
 
     if (!mounted) return;
     setState(() {
+      _status = ''; // Clear error on success
       _courses = courses;
       _items = items;
       // Force rebuild the color map to discard any cached explicit colors from older sessions if they were removed
@@ -1038,6 +1049,8 @@ class _TimetablePageState extends State<TimetablePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Only rebuild parts that need it.
+    // The main Scaffold should be stable.
     final loc = Provider.of<LocaleProvider>(context);
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
@@ -1305,78 +1318,18 @@ class _TimetablePageState extends State<TimetablePage> {
                 },
                 itemCount: 20,
                 itemBuilder: (context, index) {
-                  final week = index + 1;
-                  final visibleDays = _showWeekend
-                      ? const [1, 2, 3, 4, 5, 6, 7]
-                      : const [1, 2, 3, 4, 5];
-                  const headerHeight = 64.0;
-
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final gridWidth = (constraints.maxWidth - 40)
-                          .clamp(0.0, double.infinity);
-                      final cellWidth = gridWidth / visibleDays.length;
-
-                      return Column(
-                        children: [
-                          SizedBox(
-                            height: headerHeight,
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 40,
-                                  child: _buildMonthHeader(targetWeek: week),
-                                ),
-                                Expanded(
-                                  child: SizedBox(
-                                    width: gridWidth,
-                                    child: _buildWeekdayHeader(
-                                      targetWeek: week,
-                                      visibleDays: visibleDays,
-                                      cellWidth: cellWidth,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Scrollbar(
-                              controller: _gridScrollController,
-                              thumbVisibility: isDesktop,
-                              child: SingleChildScrollView(
-                                controller: _gridScrollController,
-                                physics: scrollPhysics,
-                                padding: EdgeInsets.only(
-                                  bottom:
-                                      MediaQuery.of(context).padding.bottom +
-                                          12,
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    SizedBox(
-                                        width: 40, child: _buildTimeColumn()),
-                                    Expanded(
-                                      child: SizedBox(
-                                        width: gridWidth,
-                                        child: _buildGridStack(
-                                          key: ValueKey(
-                                              '$_viewingProfileId-$week'),
-                                          targetWeek: week,
-                                          visibleDays: visibleDays,
-                                          cellWidth: cellWidth,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+                  return _TimetableWeekView(
+                    week: index + 1,
+                    viewingProfileId: _viewingProfileId,
+                    showWeekend: _showWeekend,
+                    items: _items,
+                    courses: _courses,
+                    courseColors: _courseColors,
+                    onEditCell: _editCell,
+                    onShowActions: _showTimetableItemActions,
+                    onShowQuickMenu: _showCourseQuickMenu,
+                    isTeacher: widget.session.isTeacher,
+                    canTakeAttendance: widget.session.canTakeAttendance,
                   );
                 },
               ),
@@ -1459,45 +1412,7 @@ class _TimetablePageState extends State<TimetablePage> {
         : const SizedBox.shrink();
   }
 
-  Widget _buildMonthHeader({required int targetWeek}) {
-    final loc = Provider.of<LocaleProvider>(context);
-    final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    final firstWeekStart = DateTime(now.year, 3, 9);
-    final startOfTargetWeek =
-        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
-    final targetMonth = startOfTargetWeek.month;
-
-    return SizedBox(
-      height: 64,
-      child: Center(
-        child: Text(
-          loc.locale.languageCode == 'en'
-              ? [
-                  'Jan',
-                  'Feb',
-                  'Mar',
-                  'Apr',
-                  'May',
-                  'Jun',
-                  'Jul',
-                  'Aug',
-                  'Sep',
-                  'Oct',
-                  'Nov',
-                  'Dec'
-                ][targetMonth - 1]
-              : '$targetMonth\n月',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: cs.primary,
-          ),
-        ),
-      ),
-    );
-  }
+  // Removed unused internal build methods
 
   Widget _buildWeekdayHeader({
     required int targetWeek,
@@ -1508,7 +1423,7 @@ class _TimetablePageState extends State<TimetablePage> {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
     // Assuming 2026 spring semester start date for date calculation
-    final firstWeekStart = DateTime(2026, 3, 2);
+    final firstWeekStart = DateTime(now.year, 3, 9);
     final startOfTargetWeek =
         firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
     final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
@@ -1605,6 +1520,11 @@ class _TimetablePageState extends State<TimetablePage> {
     final cs = Theme.of(context).colorScheme;
     const double cellHeight = 60;
 
+    // Use a ValueKey for the stack that doesn't change on data refresh to avoid rebuild blinks
+    // But we still want to filter items for the correct week
+    final weekItems =
+        _items.where((e) => e.isWeekIncluded(targetWeek)).toList();
+
     return SizedBox(
       key: key,
       width: cellWidth * visibleDays.length,
@@ -1640,7 +1560,7 @@ class _TimetablePageState extends State<TimetablePage> {
               child: Container(color: Colors.grey.withValues(alpha: 0.1)),
             );
           }),
-          ..._items.where((e) => e.isWeekIncluded(targetWeek)).map((item) {
+          ...weekItems.map((item) {
             final course = _courses[item.courseId];
             if (course == null) return const SizedBox.shrink();
 
@@ -1676,7 +1596,8 @@ class _TimetablePageState extends State<TimetablePage> {
                     final enableQuickRollCall =
                         Provider.of<LocaleProvider>(context, listen: false)
                             .enableQuickRollCall;
-                    if (widget.session.isTeacher && enableQuickRollCall) {
+                    if (widget.session.canTakeAttendance &&
+                        enableQuickRollCall) {
                       _showCourseQuickMenu(
                         details: details,
                         item: item,
@@ -1838,6 +1759,495 @@ class _TimetablePageState extends State<TimetablePage> {
           );
         },
         transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
+  }
+}
+
+class _TimetableWeekView extends StatefulWidget {
+  final int week;
+  final String viewingProfileId;
+  final bool showWeekend;
+  final List<TimetableItem> items;
+  final Map<String, Course> courses;
+  final Map<String, Color> courseColors;
+  final Function({int? initialWeekday, int? initialPeriod}) onEditCell;
+  final Function(TimetableItem) onShowActions;
+  final Function({
+    required TapDownDetails details,
+    required TimetableItem item,
+    required Course course,
+  }) onShowQuickMenu;
+  final bool isTeacher;
+  final bool canTakeAttendance;
+
+  const _TimetableWeekView({
+    required this.week,
+    required this.viewingProfileId,
+    required this.showWeekend,
+    required this.items,
+    required this.courses,
+    required this.courseColors,
+    required this.onEditCell,
+    required this.onShowActions,
+    required this.onShowQuickMenu,
+    required this.isTeacher,
+    required this.canTakeAttendance,
+  });
+
+  @override
+  State<_TimetableWeekView> createState() => _TimetableWeekViewState();
+}
+
+class _TimetableWeekViewState extends State<_TimetableWeekView> {
+  final ScrollController _gridScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _gridScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleDays = widget.showWeekend
+        ? const [1, 2, 3, 4, 5, 6, 7]
+        : const [1, 2, 3, 4, 5];
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isAndroid = Platform.isAndroid;
+    final scrollPhysics = isAndroid
+        ? const ClampingScrollPhysics()
+        : const BouncingScrollPhysics();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gridWidth =
+            (constraints.maxWidth - 40).clamp(0.0, double.infinity);
+        final cellWidth = gridWidth / visibleDays.length;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: 64,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    child: _buildMonthHeader(context, widget.week),
+                  ),
+                  Expanded(
+                    child: SizedBox(
+                      width: gridWidth,
+                      child: _buildWeekdayHeader(
+                          context, widget.week, visibleDays, cellWidth),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Scrollbar(
+                controller: _gridScrollController,
+                thumbVisibility: isDesktop,
+                child: SingleChildScrollView(
+                  controller: _gridScrollController,
+                  physics: scrollPhysics,
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).padding.bottom + 12,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(width: 40, child: _TimeColumn()),
+                      Expanded(
+                        child: SizedBox(
+                          width: gridWidth,
+                          child: _GridStack(
+                            key: ValueKey(
+                                '${widget.viewingProfileId}-${widget.week}'),
+                            targetWeek: widget.week,
+                            visibleDays: visibleDays,
+                            cellWidth: cellWidth,
+                            items: widget.items,
+                            courses: widget.courses,
+                            courseColors: widget.courseColors,
+                            onEditCell: widget.onEditCell,
+                            onShowActions: widget.onShowActions,
+                            onShowQuickMenu: widget.onShowQuickMenu,
+                            isTeacher: widget.isTeacher,
+                            canTakeAttendance: widget.canTakeAttendance,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMonthHeader(BuildContext context, int targetWeek) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final startOfTargetWeek =
+        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
+    final targetMonth = startOfTargetWeek.month;
+
+    return SizedBox(
+      height: 64,
+      child: Center(
+        child: Text(
+          loc.locale.languageCode == 'en'
+              ? [
+                  'Jan',
+                  'Feb',
+                  'Mar',
+                  'Apr',
+                  'May',
+                  'Jun',
+                  'Jul',
+                  'Aug',
+                  'Sep',
+                  'Oct',
+                  'Nov',
+                  'Dec'
+                ][targetMonth - 1]
+              : '$targetMonth\n月',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: cs.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekdayHeader(
+    BuildContext context,
+    int targetWeek,
+    List<int> visibleDays,
+    double cellWidth,
+  ) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final startOfTargetWeek =
+        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
+    final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
+    final dayFontSize = (cellWidth * 0.28).clamp(12.0, 15.0);
+
+    final dayLabels = <int, String>{
+      1: loc.t('一', 'Mon'),
+      2: loc.t('二', 'Tue'),
+      3: loc.t('三', 'Wed'),
+      4: loc.t('四', 'Thu'),
+      5: loc.t('五', 'Fri'),
+      6: loc.t('六', 'Sat'),
+      7: loc.t('日', 'Sun'),
+    };
+
+    return Row(
+      children: List.generate(visibleDays.length, (i) {
+        final date = startOfTargetWeek.add(Duration(days: i));
+        final isToday = now.year == date.year &&
+            now.month == date.month &&
+            now.day == date.day;
+        final label = dayLabels[visibleDays[i]] ?? '';
+
+        return SizedBox(
+          width: cellWidth,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: BoxDecoration(
+              color: isToday ? cs.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: labelFontSize,
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                    color: isToday ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${date.day}',
+                  style: TextStyle(
+                    fontSize: dayFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: isToday ? cs.onPrimary : cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _TimeColumn extends StatelessWidget {
+  const _TimeColumn();
+
+  static const _periods = <({int period, String start, String end})>[
+    (period: 1, start: '08:00', end: '08:45'),
+    (period: 2, start: '08:55', end: '09:40'),
+    (period: 3, start: '10:10', end: '10:55'),
+    (period: 4, start: '11:05', end: '11:50'),
+    (period: 5, start: '14:30', end: '15:15'),
+    (period: 6, start: '15:25', end: '16:10'),
+    (period: 7, start: '16:40', end: '17:25'),
+    (period: 8, start: '17:35', end: '18:20'),
+    (period: 9, start: '19:00', end: '19:45'),
+    (period: 10, start: '19:55', end: '20:30'),
+    (period: 11, start: '20:40', end: '21:25'),
+    (period: 12, start: '21:35', end: '22:20'),
+  ];
+  static const int _maxVisiblePeriod = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: _periods.take(_maxVisiblePeriod).map((p) {
+        return SizedBox(
+          height: 60,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('${p.period}',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: cs.onSurface)),
+              Text(p.start,
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+              Text(p.end,
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _GridStack extends StatelessWidget {
+  final int targetWeek;
+  final List<int> visibleDays;
+  final double cellWidth;
+  final List<TimetableItem> items;
+  final Map<String, Course> courses;
+  final Map<String, Color> courseColors;
+  final Function({int? initialWeekday, int? initialPeriod}) onEditCell;
+  final Function(TimetableItem) onShowActions;
+  final Function({
+    required TapDownDetails details,
+    required TimetableItem item,
+    required Course course,
+  }) onShowQuickMenu;
+  final bool isTeacher;
+  final bool canTakeAttendance;
+
+  const _GridStack({
+    super.key,
+    required this.targetWeek,
+    required this.visibleDays,
+    required this.cellWidth,
+    required this.items,
+    required this.courses,
+    required this.courseColors,
+    required this.onEditCell,
+    required this.onShowActions,
+    required this.onShowQuickMenu,
+    required this.isTeacher,
+    required this.canTakeAttendance,
+  });
+
+  static const int _maxVisiblePeriod = 10;
+  static const _expressiveColors = <Color>[
+    Color(0xFFE8F5E9),
+    Color(0xFFFFF3E0),
+    Color(0xFFFCE4EC),
+    Color(0xFFF3E5F5),
+    Color(0xFFE0F7FA),
+    Color(0xFFFFFDE7),
+    Color(0xFFE8EAF6),
+    Color(0xFFFBE9E7),
+    Color(0xFFEFEBE9),
+    Color(0xFFF1F8E9),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const double cellHeight = 60;
+    final weekItems = items.where((e) => e.isWeekIncluded(targetWeek)).toList();
+
+    return SizedBox(
+      width: cellWidth * visibleDays.length,
+      height: _maxVisiblePeriod * cellHeight,
+      child: Stack(
+        children: [
+          ...List.generate(visibleDays.length, (i) {
+            return Positioned(
+              left: i * cellWidth,
+              top: 0,
+              bottom: 0,
+              width: cellWidth,
+              child: Container(color: cs.primary.withValues(alpha: 0.05)),
+            );
+          }),
+          ...List.generate(visibleDays.length, (i) {
+            return Positioned(
+              left: i * cellWidth,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
+            );
+          }),
+          ...List.generate(_maxVisiblePeriod, (i) {
+            return Positioned(
+              left: 0,
+              right: 0,
+              top: i * cellHeight,
+              height: 1,
+              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
+            );
+          }),
+          ...weekItems.map((item) {
+            final course = courses[item.courseId];
+            if (course == null) return const SizedBox.shrink();
+
+            final weekdayIndex = visibleDays.indexOf(item.weekday);
+            if (weekdayIndex < 0) return const SizedBox.shrink();
+            if (item.startPeriod > _maxVisiblePeriod) {
+              return const SizedBox.shrink();
+            }
+
+            final startPeriodIndex = item.startPeriod - 1;
+            final effectiveEndPeriod =
+                item.endPeriod.clamp(1, _maxVisiblePeriod);
+            final periodSpan = effectiveEndPeriod - item.startPeriod + 1;
+            if (periodSpan <= 0) return const SizedBox.shrink();
+
+            final cardColor = courseColors[item.courseId] ??
+                _expressiveColors[
+                    item.hashCode.abs() % _expressiveColors.length];
+
+            return Positioned(
+              left: weekdayIndex * cellWidth,
+              top: startPeriodIndex * cellHeight,
+              width: cellWidth,
+              height: periodSpan * cellHeight,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: _TimetableCourseBlock(
+                  key: ValueKey(item.id),
+                  onTapDown: (details) {
+                    final enableQuickRollCall =
+                        Provider.of<LocaleProvider>(context, listen: false)
+                            .enableQuickRollCall;
+                    if (canTakeAttendance && enableQuickRollCall) {
+                      onShowQuickMenu(
+                          details: details, item: item, course: course);
+                    } else {
+                      onEditCell(
+                          initialWeekday: item.weekday,
+                          initialPeriod: item.startPeriod);
+                    }
+                  },
+                  onTap: () {},
+                  onLongPress: () => onShowActions(item),
+                  color: cardColor,
+                  radius: 12.0,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          course.courseName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black.withValues(alpha: 220),
+                            height: 1.5,
+                          ),
+                          maxLines: 4,
+                          overflow: TextOverflow.fade,
+                        ),
+                        const Spacer(),
+                        if (item.location.isNotEmpty)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.location_on_outlined,
+                                  size: 10,
+                                  color: Colors.black.withValues(alpha: 150)),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  item.location,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.black.withValues(alpha: 150),
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.15,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (item.weeks.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                item.weeks,
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  color: Colors.black.withValues(alpha: 120),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
       ),
     );
   }

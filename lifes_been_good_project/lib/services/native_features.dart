@@ -325,26 +325,35 @@ class NativeFeatures {
   Future<Map<String, dynamic>> startAttendanceSession({
     required String courseId,
     required String createdByProfileId,
+    int? week,
+    int? period,
   }) async {
-    final exePath = _featurePath('attendance_session_start');
-    final exists = await File(exePath).exists();
-    if (!exists) {
-      return {
-        'ok': false,
-        'error': {
-          'code': 'missing_binary',
-          'message': '未找到二进制：$exePath',
-        },
-      };
+    try {
+      final f = File(p.join(dataDir, 'attendance_sessions.csv'));
+      if (!await f.exists()) {
+        await f.writeAsString('id,course_id,created_by_profile_id,started_at,ended_at,week,period\n');
+      } else {
+        final content = await f.readAsString();
+        if (!content.startsWith('id,course_id,created_by_profile_id,started_at,ended_at,week,period')) {
+          final lines = const LineSplitter().convert(content);
+          final out = <String>['id,course_id,created_by_profile_id,started_at,ended_at,week,period'];
+          for (var i = 1; i < lines.length; i++) {
+            if (lines[i].trim().isEmpty) continue;
+            out.add('${lines[i].trim()},,');
+          }
+          await f.writeAsString('${out.join('\n')}\n');
+        }
+      }
+      
+      final id = 'as_${DateTime.now().millisecondsSinceEpoch}';
+      final startedAt = '${DateTime.now().toUtc().toIso8601String().split('.').first}Z';
+      final w = week?.toString() ?? '';
+      final pStr = period?.toString() ?? '';
+      await f.writeAsString('$id,$courseId,$createdByProfileId,$startedAt,,$w,$pStr\n', mode: FileMode.append);
+      return {'ok': true, 'data': {'session_id': id, 'started_at': startedAt}};
+    } catch(e) {
+      return {'ok': false, 'error': {'message': e.toString()}};
     }
-
-    final res = await Process.run(
-      exePath,
-      [dataDir, courseId, createdByProfileId],
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    );
-    return _decode(res);
   }
 
   Future<Map<String, dynamic>> markAttendanceRecord({
