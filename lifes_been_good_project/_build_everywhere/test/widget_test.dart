@@ -1,0 +1,24 @@
+// This is a basic Flutter widget test.
+//
+// To perform an interaction with a widget in your test, use the WidgetTester
+// utility in the flutter_test package. For example, you can send tap and scroll
+// gestures. You can also use WidgetTester to find child widgets in the widget
+// tree, read text, and verify that the values of widget properties are correct.
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+import 'package:lifes_been_good_system/main.dart';
+
+void main() {
+  testWidgets('App renders smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => LocaleProvider(),
+        child: const LifeSystemApp(),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(LifeSystemApp), findsOneWidget);
+  });
+}
