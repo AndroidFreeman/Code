@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-04-20 18:10:14
+ * @LastEditTime: 2026-04-20 18:11:35
  * @FilePath: /Code/LearnDS_HBPU/0.5_myString.cpp
  */
 #include <bits/stdc++.h>
@@ -49,11 +49,11 @@ bool mySubString(myString& Sub, myString S, int Position, int Length) {
 }
 
 int myStringIndex(myString S, myString Sub, int Length) {
-    if(Sub.length<=0) return 0;
+    if (Sub.length <= 0) return 0;
     myString tempS;
-    for(int i=1;i<=S.length-Sub.length+1;i++){
+    for (int i = 1; i <= S.length - Sub.length + 1; i++) {
         mySubString(tempS, S, i, Sub.length);
-        if(myStringCompare(tempS, Sub)==0) return i;
+        if (myStringCompare(tempS, Sub) == 0) return i;
     }
     return 0;
 }
