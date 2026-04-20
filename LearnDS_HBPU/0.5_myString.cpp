@@ -3,28 +3,13 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-04-20 18:11:35
+ * @LastEditTime: 2026-04-20 18:16:29
  * @FilePath: /Code/LearnDS_HBPU/0.5_myString.cpp
  */
 #include <bits/stdc++.h>
 using namespace std;
 const int MaxLen = 255;
 const int ChunkSize = 80;
-
-// struct Chunk{
-//     char ch[ChunkSize];
-//     struct Chunk* next;
-// };
-
-// struct myStringL{
-//     Chunk *head, *tail;
-//     int length;
-// };
-
-// struct myStringH{
-//     char *ch;
-//     int length;
-// };
 
 struct myString {
     char ch[MaxLen + 1];
