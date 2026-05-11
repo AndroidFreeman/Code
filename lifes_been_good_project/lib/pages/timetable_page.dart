@@ -2,10 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:path/path.dart' as p;
+import 'package:file_picker/file_picker.dart';
 
 import '../models/course.dart';
 import '../models/timetable_item.dart';
@@ -15,6 +14,7 @@ import '../main.dart';
 import 'add_course_page.dart';
 import 'attendance_page.dart';
 import '../widgets/expressive_ui.dart';
+import '../services/database_helper.dart';
 
 class TimetableController {
   Future<void> Function()? importWakeUp;
@@ -105,9 +105,9 @@ class _TimetablePageState extends State<TimetablePage> {
     (period: 11, start: '20:40', end: '21:25'),
     (period: 12, start: '21:35', end: '22:20'),
   ];
-  static const int _maxVisiblePeriod = 10;
 
   late PageController _pageController;
+  Map<String, String> _classNameMap = {};
 
   @override
   void initState() {
@@ -125,9 +125,11 @@ class _TimetablePageState extends State<TimetablePage> {
       if (!mounted) return;
       await _refresh();
     });
-    widget.controller?.importWakeUp = _importWakeupSchedule;
-    widget.controller?.addCourse = () => _editCell();
-    widget.controller?.clearTimetable = _clearTimetable;
+    if (widget.controller != null) {
+      widget.controller!.importWakeUp = _importWakeupSchedule;
+      widget.controller!.addCourse = () => _editCell();
+      widget.controller!.clearTimetable = _clearTimetable;
+    }
   }
 
   @override
@@ -176,26 +178,11 @@ class _TimetablePageState extends State<TimetablePage> {
     });
 
     try {
-      final rows = await _readCsvRows('timetable.csv');
-      final originalCount = rows.length;
-      rows.removeWhere((r) => r['owner_profile_id'] == _viewingProfileId);
-
-      if (rows.length != originalCount) {
-        final headers = [
-          'id',
-          'owner_profile_id',
-          'weekday',
-          'start_period',
-          'end_period',
-          'start_time',
-          'end_time',
-          'course_id',
-          'location',
-          'created_by_profile_id',
-          'is_locked',
-          'weeks'
-        ];
-        await _writeCsv('timetable.csv', headers, rows);
+      final items = await DatabaseHelper.instance.getTimetableItems();
+      for (final item in items) {
+        if (item.ownerProfileId == _viewingProfileId) {
+          await DatabaseHelper.instance.deleteTimetableItem(item.id);
+        }
       }
 
       await _refresh();
@@ -225,7 +212,7 @@ class _TimetablePageState extends State<TimetablePage> {
   }
 
   File _uiPrefsFile() {
-    return File(p.join(widget.session.dataDir, _uiPrefsFileName));
+    return File(widget.session.dataDir + '/' + _uiPrefsFileName);
   }
 
   Future<void> _loadUiPrefs() async {
@@ -280,24 +267,43 @@ class _TimetablePageState extends State<TimetablePage> {
         widget.session.dataDir,
         widget.session.profile.id,
       );
+
+      // Read classes locally for instant render
+      final cachedClasses =
+          await DatabaseHelper.instance.getCacheData('classes');
+      Map<String, dynamic> classesRes;
+      if (cachedClasses != null) {
+        classesRes = {'ok': true, 'data': jsonDecode(cachedClasses)};
+      } else {
+        classesRes = await widget.session.features
+            .csvOp(action: 'read', file: 'classes.csv');
+      }
+
+      if (classesRes['ok'] == true) {
+        final data = classesRes['data'];
+        final items =
+            (data is List) ? data : ((data as Map?)?['items'] as List? ?? []);
+        for (final c in items) {
+          final id = (c['id'] ?? c['classCode'] ?? '').toString().trim();
+          final name =
+              (c['className'] ?? c['class_name'] ?? '').toString().trim();
+          if (id.isNotEmpty) {
+            _classNameMap[id] = name.isNotEmpty ? name : id;
+          }
+        }
+      }
     }
 
     Map<String, dynamic> coursesRes;
-    if (await widget.session.features.hasFeature('courses_list')) {
-      coursesRes = await widget.session.features.listCourses();
+    // Always read from local CSV/Cache to guarantee instant render (Offline-First)
+    final cachedCourses = await DatabaseHelper.instance.getCacheData('courses');
+    if (cachedCourses != null) {
+      coursesRes = {'ok': true, 'data': jsonDecode(cachedCourses)};
     } else {
-      final cli = widget.session.cli;
-      if (!mounted) return;
-      final loc = Provider.of<LocaleProvider>(context, listen: false);
-      if (cli == null) {
-        setState(() {
-          _status = loc.t('缺少 courses_list，且未配置 campus_cli',
-              'Missing courses_list, and campus_cli is not configured');
-        });
-        return;
-      }
-      coursesRes = await cli.call('courses.list', {});
+      coursesRes = await widget.session.features
+          .csvOp(action: 'read', file: 'courses.csv');
     }
+
     if (coursesRes['ok'] != true) {
       final msg =
           ((coursesRes['error'] ?? const {}) as Map)['message']?.toString() ??
@@ -318,40 +324,33 @@ class _TimetablePageState extends State<TimetablePage> {
       courses[course.id] = course;
     }
 
-    Map<String, dynamic> res;
-    if (await widget.session.features.hasFeature('timetable_list')) {
-      res = await widget.session.features.listTimetable();
-    } else {
-      final cli = widget.session.cli;
-      if (!mounted) return;
-      final loc = Provider.of<LocaleProvider>(context, listen: false);
-      if (cli == null) {
-        setState(() {
-          _status = loc.t('缺少 timetable_list，且未配置 campus_cli',
-              'Missing timetable_list, and campus_cli is not configured');
-        });
-        return;
+    var ttItems = await DatabaseHelper.instance.getTimetableItems();
+
+    // --- Data Migration (CSV -> SQLite) ---
+    final migrated = await DatabaseHelper.instance.getSyncState('csv_migrated');
+    if (migrated != 1) {
+      Map<String, dynamic> ttRes = await widget.session.features
+          .csvOp(action: 'read', file: 'timetable.csv');
+      if (ttRes['ok'] == true) {
+        final rawList =
+            (((ttRes['data'] ?? const {}) as Map)['items'] ?? const []) as List;
+        for (final e in rawList) {
+          final map = (e as Map).cast<String, dynamic>();
+          if (!map.containsKey('id') || map['id'].toString().trim().isEmpty) {
+            map['id'] =
+                'tt_migrated_${DateTime.now().microsecondsSinceEpoch}_${e.hashCode}';
+          }
+          final item = TimetableItem.fromJson(map);
+          await DatabaseHelper.instance.insertTimetableItem(item,
+              updatedAt: DateTime.now().millisecondsSinceEpoch);
+        }
+        ttItems = await DatabaseHelper.instance.getTimetableItems();
       }
-      res = await cli.call('timetable.list', {});
-    }
-    if (res['ok'] != true) {
-      final msg = ((res['error'] ?? const {}) as Map)['message']?.toString() ??
-          'unknown error';
-      setState(() {
-        _status = msg;
-      });
-      widget.onReady?.call();
-      return;
+      await DatabaseHelper.instance.setSyncState('csv_migrated', 1);
     }
 
-    final raw =
-        (((res['data'] ?? const {}) as Map)['items'] ?? const []) as List;
-    final ttMap = <String, TimetableItem>{};
-    for (final e in raw) {
-      final item = TimetableItem.fromJson((e as Map).cast<String, dynamic>());
-      ttMap[item.id] = item;
-    }
-    final all = ttMap.values.toList();
+    final all = ttItems;
+
     final items = all.where((e) {
       if (e.ownerProfileId == _viewingProfileId) return true;
       // If student, also show class schedule
@@ -434,45 +433,23 @@ class _TimetablePageState extends State<TimetablePage> {
     bool allowLocked = false,
     String? createdByProfileId,
   }) async {
-    final rows = await _readCsvRows('timetable.csv');
-    if (rows.isEmpty) return;
-    final headers = [
-      'id',
-      'owner_profile_id',
-      'weekday',
-      'start_period',
-      'end_period',
-      'start_time',
-      'end_time',
-      'course_id',
-      'location',
-      'created_by_profile_id',
-      'is_locked',
-      'weeks'
-    ];
-    bool isMatch(Map<String, String> r) {
-      if ((r['owner_profile_id'] ?? '') != ownerProfileId) return false;
-      if (int.tryParse((r['weekday'] ?? '').toString()) != weekday) {
-        return false;
-      }
-      if (int.tryParse((r['start_period'] ?? '').toString()) != startPeriod) {
-        return false;
-      }
+    final items = await DatabaseHelper.instance.getTimetableItems();
+    if (items.isEmpty) return;
+
+    bool isMatch(TimetableItem r) {
+      if (r.ownerProfileId != ownerProfileId) return false;
+      if (r.weekday != weekday) return false;
+      if (r.startPeriod != startPeriod) return false;
       if (createdByProfileId != null &&
-          (r['created_by_profile_id'] ?? '') != createdByProfileId) {
-        return false;
-      }
+          r.createdByProfileId != createdByProfileId) return false;
       return true;
     }
 
-    final matches = rows.where(isMatch).toList(growable: false);
+    final matches = items.where(isMatch).toList(growable: false);
     if (matches.isEmpty) return;
 
     for (final r in matches) {
-      final lockedRaw = (r['is_locked'] ?? '').toLowerCase();
-      final locked =
-          lockedRaw == 'true' || lockedRaw == '1' || lockedRaw == 'yes';
-      if (locked && !allowLocked) {
+      if (r.isLocked && !allowLocked) {
         if (!mounted) throw Exception('locked');
         final loc = Provider.of<LocaleProvider>(context, listen: false);
         throw loc.t('该课表由老师添加，学生不可更改',
@@ -480,8 +457,9 @@ class _TimetablePageState extends State<TimetablePage> {
       }
     }
 
-    rows.removeWhere(isMatch);
-    await _writeCsv('timetable.csv', headers, rows);
+    for (final r in matches) {
+      await DatabaseHelper.instance.deleteTimetableItem(r.id);
+    }
   }
 
   Future<void> _deleteTimetableForItem(TimetableItem item,
@@ -759,9 +737,9 @@ class _TimetablePageState extends State<TimetablePage> {
           final targetClass = _viewingProfileId.substring('class_'.length);
           final ids = await _studentProfileIds(classCode: targetClass);
           for (final id in ids) {
-            final r = await widget.session.features.insertTimetableItem(
+            final r = TimetableItem(
               id: nextTtId(),
-              owner: id,
+              ownerProfileId: id,
               weekday: weekday,
               startPeriod: start,
               endPeriod: end,
@@ -769,19 +747,17 @@ class _TimetablePageState extends State<TimetablePage> {
               endTime: ep.end,
               courseId: cid,
               location: location,
-              creator: owner,
+              createdByProfileId: owner,
               isLocked: true,
               weeks: weeks,
             );
-            if (r['ok'] != true) {
-              throw ((r['error'] ?? const {}) as Map)['message'] ??
-                  loc.t('保存课表失败', 'Failed to save schedule');
-            }
+            await DatabaseHelper.instance.insertTimetableItem(r,
+                updatedAt: DateTime.now().millisecondsSinceEpoch);
           }
           // Also add to class viewing profile
-          final r2 = await widget.session.features.insertTimetableItem(
+          final r2 = TimetableItem(
             id: nextTtId(),
-            owner: _viewingProfileId,
+            ownerProfileId: _viewingProfileId,
             weekday: weekday,
             startPeriod: start,
             endPeriod: end,
@@ -789,18 +765,16 @@ class _TimetablePageState extends State<TimetablePage> {
             endTime: ep.end,
             courseId: cid,
             location: location,
-            creator: owner,
+            createdByProfileId: owner,
             isLocked: true,
             weeks: weeks,
           );
-          if (r2['ok'] != true) {
-            throw ((r2['error'] ?? const {}) as Map)['message'] ??
-                loc.t('保存课表失败', 'Failed to save schedule');
-          }
+          await DatabaseHelper.instance.insertTimetableItem(r2,
+              updatedAt: DateTime.now().millisecondsSinceEpoch);
         } else {
-          final r = await widget.session.features.insertTimetableItem(
+          final r = TimetableItem(
             id: nextTtId(),
-            owner: _viewingProfileId,
+            ownerProfileId: _viewingProfileId,
             weekday: weekday,
             startPeriod: start,
             endPeriod: end,
@@ -808,14 +782,12 @@ class _TimetablePageState extends State<TimetablePage> {
             endTime: ep.end,
             courseId: cid,
             location: location,
-            creator: owner,
+            createdByProfileId: owner,
             isLocked: false,
             weeks: weeks,
           );
-          if (r['ok'] != true) {
-            throw ((r['error'] ?? const {}) as Map)['message'] ??
-                loc.t('保存课表失败', 'Failed to save schedule');
-          }
+          await DatabaseHelper.instance.insertTimetableItem(r,
+              updatedAt: DateTime.now().millisecondsSinceEpoch);
         }
       }
 
@@ -856,17 +828,29 @@ class _TimetablePageState extends State<TimetablePage> {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['wakeup_schedule', 'json', 'txt'],
+        type: FileType
+            .any, // Changed to any for better compatibility on some Android versions
         allowMultiple: false,
       );
-      if (result == null || result.files.isEmpty) return;
+      if (result == null || result.files.isEmpty) {
+        print('TimetablePage: File picker cancelled or empty result');
+        return;
+      }
       if (!mounted) return;
-      final path = result.files.first.path;
-      if (path == null) return;
 
-      final content = await File(path).readAsString();
-      if (!mounted) return;
+      final file = result.files.first;
+      print('TimetablePage: Picked file: ${file.name}, path: ${file.path}');
+
+      String content;
+      if (file.path != null) {
+        content = await File(file.path!).readAsString();
+      } else if (file.bytes != null) {
+        content = utf8.decode(file.bytes!);
+      } else {
+        throw loc.t('无法读取文件内容', 'Cannot read file content');
+      }
+
+      print('TimetablePage: File content length: ${content.length}');
 
       // Parse the 5 JSON blocks
       // A simple way to split them is by finding the top-level structures
@@ -898,9 +882,17 @@ class _TimetablePageState extends State<TimetablePage> {
         }
       }
 
+      print('TimetablePage: Found ${blocks.length} JSON blocks');
+
       if (blocks.length < 5) {
-        throw loc.t(
-            '无效的 wakeup_schedule 文件格式', 'Invalid wakeup_schedule file format');
+        // Try a more aggressive split if the simple depth counting failed
+        // Some files might have leading/trailing garbage
+        if (blocks.isEmpty) {
+          throw loc.t(
+              '文件内容不包含有效的 JSON 块', 'File does not contain valid JSON blocks');
+        }
+        throw loc.t('无效的 wakeup_schedule 文件格式 (发现 ${blocks.length} 个块)',
+            'Invalid wakeup_schedule file format (found ${blocks.length} blocks)');
       }
 
       final itemsJson = jsonDecode(blocks[4]) as List;
@@ -932,118 +924,126 @@ class _TimetablePageState extends State<TimetablePage> {
         final newCid = 'c_${base}_${seq++}';
         courseIdMap[oldId] = newCid;
 
-        final res = await widget.session.features.insertCourse(
+        print('TimetablePage: Inserting course: $name ($newCid)');
+        final insertRes = await widget.session.features.insertCourse(
           id: newCid,
           name: name,
-          teacherId: owner,
-          term: '2026S',
+          teacherId: owner, // Mark self as teacher for imported courses
+          term: 'WakeUp',
           color: parsedColor,
           credits: credit,
           notes: note,
         );
-        if (res['ok'] != true) throw loc.t('保存课程失败', 'Failed to save course');
+        if (insertRes['ok'] != true) {
+          print(
+              'TimetablePage: Failed to insert course: ${insertRes['error']}');
+          throw insertRes['error']?['message'] ?? 'Failed to insert course';
+        }
       }
+
+      print(
+          'TimetablePage: Courses imported. Importing ${itemsJson.length} timetable items...');
 
       // Import Timetable Items
       for (final item in itemsJson) {
         final map = item as Map<String, dynamic>;
-        final oldCid = map['id'] as int;
-        final newCid = courseIdMap[oldCid];
-        if (newCid == null) continue;
+        final oldCourseId = map['id'] as int; // WakeUp links via 'id'
+        final courseId = courseIdMap[oldCourseId];
+        if (courseId == null) {
+          print(
+              'TimetablePage: Warning: No course mapping for old ID $oldCourseId');
+          continue;
+        }
 
-        final day = map['day'] as int;
-        final startNode = map['startNode'] as int;
-        final step = map['step'] as int;
-        final endNode = startNode + step - 1;
         final room = (map['room'] ?? '').toString();
-        final startWeek = map['startWeek'] ?? 1;
-        final endWeek = map['endWeek'] ?? 20;
-        final type = map['type'] ?? 0; // 0=all, 1=odd, 2=even
+        final weeksStr = (map['weeks'] ?? '').toString();
+        final day = map['day'] as int? ?? 1;
+        final startPeriod = map['start'] as int? ?? 1;
+        final step = map['step'] as int? ?? 1;
 
-        String weeksStr = '';
-        if (type == 0) {
-          weeksStr = '$startWeek-$endWeek';
-        } else {
-          final wList = <int>[];
-          for (var w = startWeek as int; w <= (endWeek as int); w++) {
-            if (type == 1 && w % 2 != 0) wList.add(w);
-            if (type == 2 && w % 2 == 0) wList.add(w);
-          }
-          weeksStr = wList.join(',');
-        }
-
-        // Find start/end time roughly based on period
-        final sp = _periods.firstWhere((e) => e.period == startNode,
-            orElse: () => _periods.first);
-        final ep = _periods.firstWhere((e) => e.period == endNode,
-            orElse: () => _periods.first);
-
-        if (widget.session.isTeacher &&
-            _viewingProfileId.startsWith('class_')) {
-          final targetClass = _viewingProfileId.substring('class_'.length);
-          final ids = await _studentProfileIds(classCode: targetClass);
-          for (final id in ids) {
-            await widget.session.features.insertTimetableItem(
-              id: nextTtId(),
-              owner: id,
-              weekday: day,
-              startPeriod: startNode,
-              endPeriod: endNode,
-              startTime: sp.start,
-              endTime: ep.end,
-              courseId: newCid,
-              location: room,
-              creator: owner,
-              isLocked: true,
-              weeks: weeksStr,
-            );
-          }
-          await widget.session.features.insertTimetableItem(
-            id: nextTtId(),
-            owner: _viewingProfileId,
-            weekday: day,
-            startPeriod: startNode,
-            endPeriod: endNode,
-            startTime: sp.start,
-            endTime: ep.end,
-            courseId: newCid,
-            location: room,
-            creator: owner,
-            isLocked: true,
-            weeks: weeksStr,
-          );
-        } else {
-          await widget.session.features.insertTimetableItem(
-            id: nextTtId(),
-            owner: _viewingProfileId,
-            weekday: day,
-            startPeriod: startNode,
-            endPeriod: endNode,
-            startTime: sp.start,
-            endTime: ep.end,
-            courseId: newCid,
-            location: room,
-            creator: owner,
-            isLocked: false,
-            weeks: weeksStr,
-          );
-        }
-      }
-
-      await _refresh();
-      if (mounted) {
-        showExpressiveSnackBar(
-          context,
-          loc.t('导入成功', 'Import succeeded'),
+        print(
+            'TimetablePage: Inserting timetable item for $courseId at day $day, period $startPeriod');
+        final rItem = TimetableItem(
+          id: nextTtId(),
+          courseId: courseId,
+          ownerProfileId: owner,
+          createdByProfileId: owner,
+          weekday: day,
+          startPeriod: startPeriod,
+          endPeriod: startPeriod + step - 1,
+          weeks: weeksStr,
+          location: room,
+          startTime: '',
+          endTime: '',
+          isLocked: false,
         );
+        await DatabaseHelper.instance.insertTimetableItem(rItem,
+            updatedAt: DateTime.now().millisecondsSinceEpoch);
+
+        // Automatically add to any classes this teacher manages
+        if (widget.session.isTeacher && _teacherClasses.isNotEmpty) {
+          for (final className in _teacherClasses) {
+            final classProfileId = 'class_$className';
+            print('TimetablePage: Propagating to class $className');
+            final rClass = TimetableItem(
+              id: nextTtId(),
+              courseId: courseId,
+              ownerProfileId: classProfileId,
+              createdByProfileId: owner,
+              weekday: day,
+              startPeriod: startPeriod,
+              endPeriod: startPeriod + step - 1,
+              weeks: weeksStr,
+              location: room,
+              startTime: '',
+              endTime: '',
+              isLocked: true,
+            );
+            await DatabaseHelper.instance.insertTimetableItem(rClass,
+                updatedAt: DateTime.now().millisecondsSinceEpoch);
+            // Also add to each student in that class
+            final studentIds = await _studentProfileIds(classCode: className);
+            print(
+                'TimetablePage: Propagating to ${studentIds.length} students in $className');
+            for (final sid in studentIds) {
+              final rStudent = TimetableItem(
+                id: nextTtId(),
+                courseId: courseId,
+                ownerProfileId: sid,
+                createdByProfileId: owner,
+                weekday: day,
+                startPeriod: startPeriod,
+                endPeriod: startPeriod + step - 1,
+                weeks: weeksStr,
+                location: room,
+                startTime: '',
+                endTime: '',
+                isLocked: true,
+              );
+              await DatabaseHelper.instance.insertTimetableItem(rStudent,
+                  updatedAt: DateTime.now().millisecondsSinceEpoch);
+            }
+          }
+        }
       }
+
+      print('TimetablePage: Import finished successfully');
+
+      // Trigger sync
+      unawaited(widget.session.features.systemInit(seed: false));
+      widget.session.notifyDataChanged(modules: const ['timetable', 'courses']);
+
+      if (!mounted) return;
+      setState(() {
+        _status = '';
+      });
+      showExpressiveSnackBar(context, loc.t('导入成功！', 'Imported successfully!'));
     } catch (e) {
-      if (mounted) {
-        final loc = Provider.of<LocaleProvider>(context, listen: false);
-        setState(() {
-          _status = loc.t('导入失败: $e', 'Import failed: $e');
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _status = '';
+      });
+      showExpressiveSnackBar(context, loc.t('导入失败: $e', 'Import failed: $e'));
     }
   }
 
@@ -1111,11 +1111,17 @@ class _TimetablePageState extends State<TimetablePage> {
                         label: loc.t('班级', 'Class'),
                         value: _viewingProfileId == widget.session.profile.id
                             ? loc.t('我的课表', 'Timetable')
-                            : _viewingProfileId.replaceFirst('class_', ''),
+                            : (_classNameMap[_viewingProfileId.replaceFirst(
+                                    'class_', '')] ??
+                                _viewingProfileId.replaceFirst('class_', '')),
                         items: [
                           loc.t('我的课表', 'Timetable'),
                           ..._teacherClasses,
                         ],
+                        customLabelBuilder: (val) {
+                          if (val == loc.t('我的课表', 'Timetable')) return val;
+                          return _classNameMap[val] ?? val;
+                        },
                         backgroundColor: cs.tertiaryContainer,
                         foregroundColor: cs.onTertiaryContainer,
                         padding: const EdgeInsets.symmetric(
@@ -1146,10 +1152,12 @@ class _TimetablePageState extends State<TimetablePage> {
                       )
                     : PopupMenuButton<String>(
                         tooltip: loc.t('选择班级', 'Select class'),
-                        initialValue:
-                            _viewingProfileId == widget.session.profile.id
-                                ? loc.t('我的课表', 'Timetable')
-                                : _viewingProfileId.replaceFirst('class_', ''),
+                        initialValue: _viewingProfileId ==
+                                widget.session.profile.id
+                            ? loc.t('我的课表', 'Timetable')
+                            : (_classNameMap[_viewingProfileId.replaceFirst(
+                                    'class_', '')] ??
+                                _viewingProfileId.replaceFirst('class_', '')),
                         onSelected: (v) {
                           final target = v == loc.t('我的课表', 'Timetable')
                               ? widget.session.profile.id
@@ -1171,7 +1179,9 @@ class _TimetablePageState extends State<TimetablePage> {
                               .map(
                                 (e) => PopupMenuItem<String>(
                                   value: e,
-                                  child: Text(e),
+                                  child: Text(e == loc.t('我的课表', 'Timetable')
+                                      ? e
+                                      : (_classNameMap[e] ?? e)),
                                 ),
                               )
                               .toList(growable: false);
@@ -1192,8 +1202,10 @@ class _TimetablePageState extends State<TimetablePage> {
                               Text(
                                 _viewingProfileId == widget.session.profile.id
                                     ? loc.t('我的课表', 'Timetable')
-                                    : _viewingProfileId.replaceFirst(
-                                        'class_', ''),
+                                    : (_classNameMap[_viewingProfileId
+                                            .replaceFirst('class_', '')] ??
+                                        _viewingProfileId.replaceFirst(
+                                            'class_', '')),
                                 style: TextStyle(
                                   color: cs.onTertiaryContainer,
                                   fontWeight: FontWeight.w700,
@@ -1226,17 +1238,16 @@ class _TimetablePageState extends State<TimetablePage> {
                     },
                   ),
         actions: [
-          if (isDesktop)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Center(
-                child: IconButton(
-                  tooltip: loc.t('导入 WakeUp 课程表', 'Import WakeUp Schedule'),
-                  onPressed: _importWakeupSchedule,
-                  icon: const Icon(Icons.file_upload_outlined),
-                ),
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Center(
+              child: IconButton(
+                tooltip: loc.t('导入 WakeUp 课程表', 'Import WakeUp Schedule'),
+                onPressed: _importWakeupSchedule,
+                icon: const Icon(Icons.file_upload_outlined),
               ),
             ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
@@ -1412,285 +1423,7 @@ class _TimetablePageState extends State<TimetablePage> {
         : const SizedBox.shrink();
   }
 
-  // Removed unused internal build methods
-
-  Widget _buildWeekdayHeader({
-    required int targetWeek,
-    required List<int> visibleDays,
-    required double cellWidth,
-  }) {
-    final loc = Provider.of<LocaleProvider>(context);
-    final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    // Assuming 2026 spring semester start date for date calculation
-    final firstWeekStart = DateTime(now.year, 3, 9);
-    final startOfTargetWeek =
-        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
-    final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
-    final dayFontSize = (cellWidth * 0.28).clamp(12.0, 15.0);
-
-    final dayLabels = <int, String>{
-      1: loc.t('一', 'Mon'),
-      2: loc.t('二', 'Tue'),
-      3: loc.t('三', 'Wed'),
-      4: loc.t('四', 'Thu'),
-      5: loc.t('五', 'Fri'),
-      6: loc.t('六', 'Sat'),
-      7: loc.t('日', 'Sun'),
-    };
-
-    return Row(
-      children: List.generate(visibleDays.length, (i) {
-        final date = startOfTargetWeek.add(Duration(days: i));
-        final isToday = now.year == date.year &&
-            now.month == date.month &&
-            now.day == date.day;
-        final label = dayLabels[visibleDays[i]] ?? '';
-
-        return SizedBox(
-          width: cellWidth,
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-            decoration: BoxDecoration(
-              color: isToday ? cs.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: labelFontSize,
-                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                    color: isToday ? cs.onPrimary : cs.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${date.day}',
-                  style: TextStyle(
-                    fontSize: dayFontSize,
-                    fontWeight: FontWeight.bold,
-                    color: isToday ? cs.onPrimary : cs.onSurface,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildTimeColumn() {
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      width: 40,
-      child: Column(
-        children: _periods.take(_maxVisiblePeriod).map((p) {
-          return SizedBox(
-            height: 60, // Height per period
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('${p.period}',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, color: cs.onSurface)),
-                Text(p.start,
-                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
-                Text(p.end,
-                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildGridStack({
-    Key? key,
-    required int targetWeek,
-    required List<int> visibleDays,
-    required double cellWidth,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    const double cellHeight = 60;
-
-    // Use a ValueKey for the stack that doesn't change on data refresh to avoid rebuild blinks
-    // But we still want to filter items for the correct week
-    final weekItems =
-        _items.where((e) => e.isWeekIncluded(targetWeek)).toList();
-
-    return SizedBox(
-      key: key,
-      width: cellWidth * visibleDays.length,
-      height: _maxVisiblePeriod * cellHeight,
-      child: Stack(
-        children: [
-          ...List.generate(visibleDays.length, (i) {
-            return Positioned(
-              left: i * cellWidth,
-              top: 0,
-              bottom: 0,
-              width: cellWidth,
-              child: Container(
-                color: cs.primary.withValues(alpha: 0.05),
-              ),
-            );
-          }),
-          ...List.generate(visibleDays.length, (i) {
-            return Positioned(
-              left: i * cellWidth,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
-            );
-          }),
-          ...List.generate(_maxVisiblePeriod, (i) {
-            return Positioned(
-              left: 0,
-              right: 0,
-              top: i * cellHeight,
-              height: 1,
-              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
-            );
-          }),
-          ...weekItems.map((item) {
-            final course = _courses[item.courseId];
-            if (course == null) return const SizedBox.shrink();
-
-            final weekdayIndex = visibleDays.indexOf(item.weekday);
-            if (weekdayIndex < 0) return const SizedBox.shrink();
-            if (item.startPeriod > _maxVisiblePeriod) {
-              return const SizedBox.shrink();
-            }
-            final startPeriodIndex = item.startPeriod - 1;
-            final effectiveEndPeriod =
-                item.endPeriod.clamp(1, _maxVisiblePeriod);
-            final periodSpan = effectiveEndPeriod - item.startPeriod + 1;
-            if (periodSpan <= 0) return const SizedBox.shrink();
-
-            // Ignore explicitColor locally to force new expressiveColors theme, since user complained about old colors being stuck.
-            // (If user manually sets color via UI later, it will still save to CSV, but we override it here for now to ensure the new palette is seen).
-            final baseCardColor = _courseColors[item.courseId] ??
-                _expressiveColors[
-                    item.courseId.hashCode.abs() % _expressiveColors.length];
-            final cardColor = baseCardColor;
-            const cardRadius = 12.0;
-
-            return Positioned(
-              left: weekdayIndex * cellWidth,
-              top: startPeriodIndex * cellHeight,
-              width: cellWidth,
-              height: periodSpan * cellHeight,
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: _TimetableCourseBlock(
-                  key: ValueKey(item.id),
-                  onTapDown: (details) {
-                    final enableQuickRollCall =
-                        Provider.of<LocaleProvider>(context, listen: false)
-                            .enableQuickRollCall;
-                    if (widget.session.canTakeAttendance &&
-                        enableQuickRollCall) {
-                      _showCourseQuickMenu(
-                        details: details,
-                        item: item,
-                        course: course,
-                      );
-                    } else {
-                      _editCell(
-                        initialWeekday: item.weekday,
-                        initialPeriod: item.startPeriod,
-                      );
-                    }
-                  },
-                  onTap: () {},
-                  onLongPress: () => _showTimetableItemActions(item),
-                  color: cardColor,
-                  radius: cardRadius,
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          course.courseName,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black.withValues(alpha: 220),
-                            height: 1.5,
-                          ),
-                          maxLines: 4,
-                          overflow: TextOverflow.fade,
-                        ),
-                        const Spacer(),
-                        if (item.location.isNotEmpty)
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                Icons.location_on_outlined,
-                                size: 10,
-                                color: Colors.black.withValues(alpha: 150),
-                              ),
-                              const SizedBox(width: 2),
-                              Expanded(
-                                child: Text(
-                                  item.location,
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.black.withValues(alpha: 150),
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.15,
-                                  ),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        if (item.weeks.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                item.weeks,
-                                style: TextStyle(
-                                    fontSize: 8,
-                                    color: Colors.black.withValues(alpha: 0.6),
-                                    fontWeight: FontWeight.bold),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showCourseQuickMenu({
+  void _showCourseQuickMenu({
     required TapDownDetails details,
     required TimetableItem item,
     required Course course,
@@ -1813,8 +1546,6 @@ class _TimetableWeekViewState extends State<_TimetableWeekView> {
     final visibleDays = widget.showWeekend
         ? const [1, 2, 3, 4, 5, 6, 7]
         : const [1, 2, 3, 4, 5];
-    final isDesktop =
-        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
     final isAndroid = Platform.isAndroid;
     final scrollPhysics = isAndroid
         ? const ClampingScrollPhysics()
@@ -1847,41 +1578,37 @@ class _TimetableWeekViewState extends State<_TimetableWeekView> {
               ),
             ),
             Expanded(
-              child: Scrollbar(
+              child: SingleChildScrollView(
                 controller: _gridScrollController,
-                thumbVisibility: isDesktop,
-                child: SingleChildScrollView(
-                  controller: _gridScrollController,
-                  physics: scrollPhysics,
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.of(context).padding.bottom + 12,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(width: 40, child: _TimeColumn()),
-                      Expanded(
-                        child: SizedBox(
-                          width: gridWidth,
-                          child: _GridStack(
-                            key: ValueKey(
-                                '${widget.viewingProfileId}-${widget.week}'),
-                            targetWeek: widget.week,
-                            visibleDays: visibleDays,
-                            cellWidth: cellWidth,
-                            items: widget.items,
-                            courses: widget.courses,
-                            courseColors: widget.courseColors,
-                            onEditCell: widget.onEditCell,
-                            onShowActions: widget.onShowActions,
-                            onShowQuickMenu: widget.onShowQuickMenu,
-                            isTeacher: widget.isTeacher,
-                            canTakeAttendance: widget.canTakeAttendance,
-                          ),
+                physics: scrollPhysics,
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 12,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(width: 40, child: _TimeColumn()),
+                    Expanded(
+                      child: SizedBox(
+                        width: gridWidth,
+                        child: _GridStack(
+                          key: ValueKey(
+                              '${widget.viewingProfileId}-${widget.week}'),
+                          targetWeek: widget.week,
+                          visibleDays: visibleDays,
+                          cellWidth: cellWidth,
+                          items: widget.items,
+                          courses: widget.courses,
+                          courseColors: widget.courseColors,
+                          onEditCell: widget.onEditCell,
+                          onShowActions: widget.onShowActions,
+                          onShowQuickMenu: widget.onShowQuickMenu,
+                          isTeacher: widget.isTeacher,
+                          canTakeAttendance: widget.canTakeAttendance,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -2079,7 +1806,6 @@ class _GridStack extends StatelessWidget {
     required this.canTakeAttendance,
   });
 
-  static const int _maxVisiblePeriod = 10;
   static const _expressiveColors = <Color>[
     Color(0xFFE8F5E9),
     Color(0xFFFFF3E0),
@@ -2101,7 +1827,7 @@ class _GridStack extends StatelessWidget {
 
     return SizedBox(
       width: cellWidth * visibleDays.length,
-      height: _maxVisiblePeriod * cellHeight,
+      height: 10 * cellHeight,
       child: Stack(
         children: [
           ...List.generate(visibleDays.length, (i) {
@@ -2122,7 +1848,7 @@ class _GridStack extends StatelessWidget {
               child: Container(color: Colors.grey.withValues(alpha: 0.1)),
             );
           }),
-          ...List.generate(_maxVisiblePeriod, (i) {
+          ...List.generate(10, (i) {
             return Positioned(
               left: 0,
               right: 0,
@@ -2137,13 +1863,12 @@ class _GridStack extends StatelessWidget {
 
             final weekdayIndex = visibleDays.indexOf(item.weekday);
             if (weekdayIndex < 0) return const SizedBox.shrink();
-            if (item.startPeriod > _maxVisiblePeriod) {
+            if (item.startPeriod > 10) {
               return const SizedBox.shrink();
             }
 
             final startPeriodIndex = item.startPeriod - 1;
-            final effectiveEndPeriod =
-                item.endPeriod.clamp(1, _maxVisiblePeriod);
+            final effectiveEndPeriod = item.endPeriod.clamp(1, 10);
             final periodSpan = effectiveEndPeriod - item.startPeriod + 1;
             if (periodSpan <= 0) return const SizedBox.shrink();
 
