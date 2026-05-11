@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -5,7 +6,6 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:provider/provider.dart';
 
 import '../main.dart';
-import '../models/profile.dart';
 import '../services/local_profiles.dart';
 import '../state/session.dart';
 import '../widgets/expressive_ui.dart';
@@ -52,56 +52,124 @@ class _ProfilePageState extends State<ProfilePage> {
     super.dispose();
   }
 
+  bool _isPickingAvatar = false;
+
   Future<void> _pickAvatar() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-    );
-    if (result != null && result.files.single.path != null) {
-      if (!mounted) return;
-      final path = result.files.single.path!;
+    if (_isPickingAvatar) return;
+    _isPickingAvatar = true;
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
 
-      if (Platform.isWindows || Platform.isLinux) {
-        setState(() {
-          _avatarPath = path;
-        });
-        return;
-      }
-
-      final loc = Provider.of<LocaleProvider>(context, listen: false);
-      final theme = Theme.of(context);
-
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressFormat: ImageCompressFormat.jpg,
-        compressQuality: 90,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: loc.t('裁切头像', 'Crop Avatar'),
-            toolbarColor: theme.colorScheme.surface,
-            toolbarWidgetColor: theme.colorScheme.onSurface,
-            activeControlsWidgetColor: theme.colorScheme.primary,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-          ),
-          IOSUiSettings(
-            title: loc.t('裁切头像', 'Crop Avatar'),
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-          WebUiSettings(
-            context: context,
-            presentStyle: WebPresentStyle.dialog,
-          ),
-        ],
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
       );
+      if (result != null && result.files.isNotEmpty) {
+        final path = result.files.single.path;
+        if (path == null || path.isEmpty) {
+          if (mounted)
+            showExpressiveSnackBar(
+                context, loc.t('无法读取文件', 'Failed to read file'));
+          return;
+        }
 
-      if (croppedFile != null) {
-        setState(() {
-          _avatarPath = croppedFile.path;
-        });
+        final file = File(path);
+        if (!await file.exists()) {
+          if (mounted)
+            showExpressiveSnackBar(
+                context, loc.t('文件不存在', 'File does not exist'));
+          return;
+        }
+
+        final size = await file.length();
+        if (size == 0) {
+          if (mounted)
+            showExpressiveSnackBar(context, loc.t('文件为空', 'File is empty'));
+          return;
+        }
+        // Limit to 2MB to prevent OOM on Android
+        if (size > 2 * 1024 * 1024) {
+          if (mounted)
+            showExpressiveSnackBar(context,
+                loc.t('图片过大，请选择小于 2MB 的图片', 'Image too large, must be < 2MB'));
+          return;
+        }
+
+        if (!mounted) return;
+
+        if (Platform.isWindows || Platform.isLinux) {
+          setState(() {
+            _avatarPath = path;
+          });
+          return;
+        }
+
+        final theme = Theme.of(context);
+        final croppedFile = await ImageCropper().cropImage(
+          sourcePath: path,
+          aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+          compressFormat: ImageCompressFormat.jpg,
+          compressQuality: 80,
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: loc.t('裁切头像', 'Crop Avatar'),
+              toolbarColor: theme.colorScheme.surface,
+              toolbarWidgetColor: theme.colorScheme.onSurface,
+              activeControlsWidgetColor: theme.colorScheme.primary,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: true,
+            ),
+            IOSUiSettings(
+              title: loc.t('裁切头像', 'Crop Avatar'),
+              aspectRatioLockEnabled: true,
+              resetAspectRatioEnabled: false,
+            ),
+            WebUiSettings(
+              context: context,
+              presentStyle: WebPresentStyle.dialog,
+            ),
+          ],
+        );
+
+        if (croppedFile != null) {
+          setState(() {
+            _avatarPath = croppedFile.path;
+          });
+        }
       }
+    } catch (e) {
+      if (mounted) {
+        showExpressiveSnackBar(
+            context, '${loc.t('选择图片失败', 'Failed to pick image')}: $e');
+      }
+    } finally {
+      _isPickingAvatar = false;
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(Provider.of<LocaleProvider>(context, listen: false)
+            .t('确认退出', 'Confirm Logout')),
+        content: Text(Provider.of<LocaleProvider>(context, listen: false)
+            .t('您确定要退出当前账号吗？', 'Are you sure you want to logout?')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(Provider.of<LocaleProvider>(context, listen: false)
+                  .t('取消', 'Cancel'))),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(Provider.of<LocaleProvider>(context, listen: false)
+                  .t('退出', 'Logout'))),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      widget.session.logout();
+      if (mounted) Navigator.of(context).pop();
     }
   }
 
@@ -113,6 +181,31 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
+      String finalAvatar = _avatarPath;
+      if (_avatarPath.isNotEmpty &&
+          !_avatarPath.startsWith('http') &&
+          !_avatarPath.startsWith('data:image')) {
+        final file = File(_avatarPath);
+        if (await file.exists()) {
+          final size = await file.length();
+          if (size > 10 * 1024 * 1024) {
+            throw Exception(loc.t('图片过大，无法保存', 'Image too large to save'));
+          }
+          final bytes = await file.readAsBytes();
+          final ext = _avatarPath.contains('.')
+              ? _avatarPath
+                  .substring(_avatarPath.lastIndexOf('.'))
+                  .toLowerCase()
+              : '.jpg';
+          final format =
+              ext == '.png' ? 'png' : (ext == '.gif' ? 'gif' : 'jpeg');
+          final base64String = base64Encode(bytes);
+          finalAvatar = 'data:image/$format;base64,$base64String';
+        }
+      } else if (_avatarPath.startsWith('data:image')) {
+        finalAvatar = _avatarPath;
+      }
+
       await LocalProfiles.updateProfile(
         dataDir: widget.session.dataDir,
         profileId: widget.session.profile.id,
@@ -120,7 +213,7 @@ class _ProfilePageState extends State<ProfilePage> {
         phone: _phoneCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
         dorm: _dormCtrl.text.trim(),
-        avatar: _avatarPath,
+        avatar: finalAvatar,
         signature: _signatureCtrl.text.trim(),
       );
 
@@ -130,13 +223,16 @@ class _ProfilePageState extends State<ProfilePage> {
         phone: _phoneCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
         dorm: _dormCtrl.text.trim(),
-        avatar: _avatarPath,
+        avatar: finalAvatar,
         signature: _signatureCtrl.text.trim(),
       );
+      widget.session.notifyDataChanged(modules: const ['profiles']);
 
       if (mounted) {
+        setState(() {
+          _avatarPath = finalAvatar;
+        });
         showExpressiveSnackBar(context, loc.t('保存成功', 'Saved'));
-        setState(() {}); // refresh UI
       }
     } catch (e) {
       setState(() {
@@ -151,6 +247,26 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  String? _resolveAvatarUrlOrPath(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return null;
+    if (v.startsWith('data:image')) return v;
+    final uri = Uri.tryParse(v);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      return v;
+    }
+    if (uri != null && uri.scheme == 'file') {
+      return uri.toFilePath();
+    }
+    if (v.contains(':\\') || v.startsWith('/')) return v;
+    return '${widget.session.dataDir}/$v';
+  }
+
+  DecorationImage? _getAvatarImage() {
+    final resolved = _resolveAvatarUrlOrPath(_avatarPath) ?? '';
+    return AvatarImageProvider.getDecorationImage(resolved);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -159,6 +275,12 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.session.profile.displayWithRealName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -186,32 +308,29 @@ class _ProfilePageState extends State<ProfilePage> {
                       width: 120,
                       height: 120,
                       decoration: BoxDecoration(
-                        color: cs.primaryContainer,
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(32),
-                        image: _avatarPath.isNotEmpty &&
-                                File(_avatarPath).existsSync()
-                            ? DecorationImage(
-                                image: FileImage(File(_avatarPath)),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
+                        border: Border.all(
+                          color: Colors.grey.shade200,
+                          width: 1,
+                        ),
+                        image: _getAvatarImage(),
                       ),
                       alignment: Alignment.center,
-                      child:
-                          _avatarPath.isEmpty || !File(_avatarPath).existsSync()
-                              ? Text(
-                                  widget.session.profile.displayName.isNotEmpty
-                                      ? widget.session.profile.displayName
-                                          .substring(0, 1)
-                                          .toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    fontSize: 40,
-                                    color: cs.onPrimaryContainer,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
+                      child: _avatarPath.isEmpty
+                          ? Text(
+                              widget.session.profile.displayName.isNotEmpty
+                                  ? widget.session.profile.displayName
+                                      .substring(0, 1)
+                                      .toUpperCase()
+                                  : '?',
+                              style: TextStyle(
+                                fontSize: 40,
+                                color: cs.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
                     ),
                     Positioned(
                       right: -4,
