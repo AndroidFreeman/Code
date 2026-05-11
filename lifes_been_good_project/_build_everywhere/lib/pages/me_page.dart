@@ -38,14 +38,18 @@ class MePage extends StatelessWidget {
                     width: 96,
                     height: 96,
                     decoration: BoxDecoration(
-                      color: cs.primaryContainer,
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 64),
+                        width: 1,
+                      ),
                     ),
                     alignment: Alignment.center,
                     child: Text(
                       p.displayName.isNotEmpty ? p.displayName.substring(0, 1) : '?',
                       style: tt.headlineLarge?.copyWith(
-                        color: cs.onPrimaryContainer,
+                        color: cs.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
