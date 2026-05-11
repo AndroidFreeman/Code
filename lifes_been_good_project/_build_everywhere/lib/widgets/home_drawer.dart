@@ -1,10 +1,9 @@
-import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../state/session.dart';
+
 import '../main.dart';
-import 'expressive_ui.dart';
+import '../state/session.dart';
+import '../widgets/expressive_ui.dart';
 
 class HomeDrawer extends StatelessWidget {
   final Session session;
@@ -22,17 +21,32 @@ class HomeDrawer extends StatelessWidget {
     this.hiddenPageIds = const {},
   });
 
+  String? _resolveAvatarUrlOrPath(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return null;
+    if (v.startsWith('data:image')) return v;
+    final uri = Uri.tryParse(v);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      return v;
+    }
+    if (uri != null && uri.scheme == 'file') {
+      return uri.toFilePath();
+    }
+    if (v.contains(':\\') || v.startsWith('/')) return v;
+    return '${session.dataDir}/$v';
+  }
+
+  DecorationImage? _getAvatarImage(String path) {
+    final resolved = _resolveAvatarUrlOrPath(path) ?? '';
+    return AvatarImageProvider.getDecorationImage(resolved);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final loc = Provider.of<LocaleProvider>(context);
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
-    final drawerSurfaceColor =
-        isLandscape ? Theme.of(context).scaffoldBackgroundColor : cs.surface;
     bool show(String id) => !hiddenPageIds.contains(id);
-
     return Drawer(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -59,7 +73,7 @@ class HomeDrawer extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
               child: Container(
                 decoration: BoxDecoration(
-                  color: drawerSurfaceColor,
+                  color: cs.surface,
                   borderRadius: const BorderRadius.only(
                     topRight: Radius.circular(24),
                     bottomRight: Radius.circular(24),
@@ -122,8 +136,7 @@ class HomeDrawer extends StatelessWidget {
                               label: loc.t('通讯录', 'Contacts'),
                               isSelected: activePage == 'contact',
                             ),
-                          if (show('attendance') &&
-                              session.canTakeAttendance)
+                          if (show('attendance') && session.canTakeAttendance)
                             _buildMenuItem(
                               context,
                               id: 'attendance',
@@ -150,6 +163,27 @@ class HomeDrawer extends StatelessWidget {
                             ),
                           _buildMenuItem(
                             context,
+                            id: 'qrcode',
+                            icon: Icons.qr_code_rounded,
+                            label: loc.t('QR Code', 'QR Code'),
+                            isSelected: activePage == 'qrcode',
+                          ),
+                          _buildMenuItem(
+                            context,
+                            id: 'weblinks',
+                            icon: Icons.language_rounded,
+                            label: loc.t('常用网站', 'Web Links'),
+                            isSelected: activePage == 'weblinks',
+                          ),
+                          _buildMenuItem(
+                            context,
+                            id: 'notifications',
+                            icon: Icons.notifications_rounded,
+                            label: loc.t('通知', 'Notifications'),
+                            isSelected: activePage == 'notifications',
+                          ),
+                          _buildMenuItem(
+                            context,
                             id: 'settings',
                             icon: Icons.settings_rounded,
                             label: loc.t('设置', 'Settings'),
@@ -163,7 +197,8 @@ class HomeDrawer extends StatelessWidget {
                       child: Bounceable(
                         onTap: () {
                           Navigator.of(context).pop();
-                          Timer(const Duration(milliseconds: 220), () {
+                          Future<void>.delayed(const Duration(milliseconds: 16),
+                              () {
                             onNavigate('profile');
                           });
                         },
@@ -172,9 +207,6 @@ class HomeDrawer extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: cs.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: cs.outlineVariant.withValues(alpha: 128),
-                            ),
                           ),
                           child: Row(
                             children: [
@@ -183,29 +215,28 @@ class HomeDrawer extends StatelessWidget {
                                 height: 44,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: cs.primaryContainer,
+                                    color: Colors.white,
                                     borderRadius: BorderRadius.circular(14),
-                                    image: session.profile.avatar.isNotEmpty &&
-                                            File(session.profile.avatar)
-                                                .existsSync()
-                                        ? DecorationImage(
-                                            image: FileImage(
-                                              File(session.profile.avatar),
-                                            ),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
+                                    border: Border.all(
+                                      color: cs.outlineVariant
+                                          .withValues(alpha: 64),
+                                      width: 1,
+                                    ),
+                                    image:
+                                        _getAvatarImage(session.profile.avatar),
                                   ),
                                   alignment: Alignment.center,
-                                  child: (session.profile.avatar.isEmpty ||
-                                          !File(session.profile.avatar)
-                                              .existsSync())
+                                  child: (_getAvatarImage(
+                                              session.profile.avatar) ==
+                                          null)
                                       ? Text(
-                                          displayName
-                                              .substring(0, 1)
-                                              .toUpperCase(),
+                                          displayName.isNotEmpty
+                                              ? displayName
+                                                  .substring(0, 1)
+                                                  .toUpperCase()
+                                              : '?',
                                           style: tt.titleMedium?.copyWith(
-                                            color: cs.onPrimaryContainer,
+                                            color: cs.primary,
                                             fontWeight: FontWeight.bold,
                                           ),
                                         )
@@ -236,6 +267,7 @@ class HomeDrawer extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               Icon(
                                 Icons.chevron_right_rounded,
                                 color: cs.onSurfaceVariant,
@@ -251,7 +283,8 @@ class HomeDrawer extends StatelessWidget {
                       child: FilledButton.tonalIcon(
                         onPressed: () {
                           Navigator.of(context).pop();
-                          Timer(const Duration(milliseconds: 220), () {
+                          Future<void>.delayed(const Duration(milliseconds: 16),
+                              () {
                             onLogout();
                           });
                         },
@@ -289,18 +322,23 @@ class HomeDrawer extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
+    void closeAndNavigate() {
+      Navigator.of(context).pop();
+      if (isSelected) return;
+      Future<void>.delayed(const Duration(milliseconds: 16), () {
+        onNavigate(id);
+      });
+    }
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+      duration: kAppRouteTransitionDuration,
       curve: Curves.easeOutCubic,
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: isSelected
-            ? cs.primaryContainer.withValues(alpha: 102)
+            ? cs.secondaryContainer.withValues(alpha: 214)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(16),
-        border: isSelected
-            ? Border.all(color: cs.primary.withValues(alpha: 26), width: 1)
-            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -308,43 +346,39 @@ class HomeDrawer extends StatelessWidget {
         child: Bounceable(
           behavior: HitTestBehavior.deferToChild,
           child: InkWell(
-            onTap: () {
-              Navigator.of(context).pop();
-              Timer(const Duration(milliseconds: 220), () {
-                onNavigate(id);
-              });
-            },
+            onTap: closeAndNavigate,
             borderRadius: BorderRadius.circular(16),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               child: Row(
                 children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves
-                        .easeOutCubic, // Changed from elasticOut to prevent negative value overshoot
-                    width: 4,
-                    height: isSelected ? 24 : 0,
-                    decoration: BoxDecoration(
-                      color: isSelected ? cs.primary : Colors.transparent,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  SizedBox(width: isSelected ? 16 : 0),
                   Icon(
                     icon,
-                    color: isSelected ? cs.primary : cs.onSurfaceVariant,
-                    size: 24,
+                    color: isSelected
+                        ? cs.onSecondaryContainer
+                        : cs.onSurfaceVariant,
+                    size: 22,
                   ),
                   const SizedBox(width: 16),
-                  Text(
-                    label,
-                    style: tt.titleMedium?.copyWith(
-                      color: isSelected ? cs.primary : cs.onSurfaceVariant,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: tt.titleMedium?.copyWith(
+                        color: isSelected
+                            ? cs.onSecondaryContainer
+                            : cs.onSurfaceVariant,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (isSelected)
+                    Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: cs.onSecondaryContainer,
+                    ),
                 ],
               ),
             ),
