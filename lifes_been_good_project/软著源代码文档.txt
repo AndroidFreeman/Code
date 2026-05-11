@@ -1,0 +1,3000 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
+import 'package:animations/animations.dart';
+
+import 'pages/bootstrap_page.dart';
+import 'pages/login_page.dart';
+import 'pages/shell_page.dart';
+import 'services/app_paths.dart';
+import 'services/android_native_installer.dart';
+import 'services/bootstrapper.dart';
+import 'services/local_profiles.dart';
+import 'services/native_cli.dart';
+import 'services/native_features.dart';
+import 'state/session.dart';
+
+class LocaleProvider extends ChangeNotifier {
+  Locale _locale = const Locale('zh', 'CN');
+  ThemeMode _themeMode = ThemeMode.light;
+  bool _enableQuickRollCall = true;
+
+  Locale get locale => _locale;
+  ThemeMode get themeMode => _themeMode;
+  bool get isEnglish => _locale.languageCode == 'en';
+  bool get enableQuickRollCall => _enableQuickRollCall;
+
+  static const _settingsFileName = 'app_settings.json';
+
+  Locale _normalizeLocale(Locale input) {
+    if (input.languageCode == 'en') return const Locale('en', 'US');
+    if (input.languageCode == 'zh') return const Locale('zh', 'CN');
+    return input;
+  }
+
+  Future<void> load() async {
+    try {
+      final dataDir = await AppPaths.dataDir();
+      final nativeLibDir = Platform.isAndroid
+          ? await AndroidNativeInstaller.getNativeLibraryDir()
+          : null;
+      final features =
+          NativeFeatures(dataDir: dataDir.path, nativeLibDir: nativeLibDir);
+      final res =
+          await features.jsonOp(action: 'read', file: _settingsFileName);
+      if (res['ok'] != true || res['data'] == null) return;
+      final decoded = res['data'];
+      if (decoded is! Map) return;
+
+      if (decoded.containsKey('enableQuickRollCall')) {
+        _enableQuickRollCall = decoded['enableQuickRollCall'] == true;
+      }
+
+      final rawLocale = decoded['locale']?.toString().trim();
+      if (rawLocale == null || rawLocale.isEmpty) return;
+      final parts = rawLocale.replaceAll('-', '_').split('_');
+      if (parts.isEmpty) return;
+      final lang = parts[0];
+      final country =
+          (parts.length >= 2 && parts[1].trim().isNotEmpty) ? parts[1] : null;
+      _locale = _normalizeLocale(Locale(lang, country));
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
+    try {
+      final dataDir = await AppPaths.dataDir();
+      final nativeLibDir = Platform.isAndroid
+          ? await AndroidNativeInstaller.getNativeLibraryDir()
+          : null;
+      final features =
+          NativeFeatures(dataDir: dataDir.path, nativeLibDir: nativeLibDir);
+      final payload = <String, dynamic>{
+        'locale': _locale.toLanguageTag(),
+        'enableQuickRollCall': _enableQuickRollCall,
+      };
+      await features.jsonOp(
+          action: 'write', file: _settingsFileName, data: payload);
+    } catch (_) {}
+  }
+
+  void setLocale(Locale newLocale) {
+    final normalized = _normalizeLocale(newLocale);
+    if (_locale == normalized) return;
+    _locale = normalized;
+    notifyListeners();
+    unawaited(_save());
+  }
+
+  void setEnableQuickRollCall(bool value) {
+    _enableQuickRollCall = value;
+    notifyListeners();
+    unawaited(_save());
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    notifyListeners();
+  }
+
+  String t(String zh, String en) {
+    return _locale.languageCode == 'en' ? en : zh;
+  }
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final localeProvider = LocaleProvider();
+  await localeProvider.load();
+  runApp(
+    ChangeNotifierProvider.value(
+      value: localeProvider,
+      child: const LifeSystemApp(),
+    ),
+  );
+}
+
+class LifeSystemApp extends StatefulWidget {
+  const LifeSystemApp({super.key});
+
+  @override
+  State<LifeSystemApp> createState() => _LifeSystemAppState();
+}
+
+class _LifeSystemAppState extends State<LifeSystemApp> {
+  Session? _session;
+  BootstrapResult? _boot;
+  bool _autoLoginTried = false;
+  SystemUiOverlayStyle? _appliedOverlayStyle;
+
+  Future<void> _tryAutoLogin(BootstrapResult boot) async {
+    if (_autoLoginTried) return;
+    _autoLoginTried = true;
+    try {
+      final profile = await LocalProfiles.loadAutoLoginProfile(
+        dataDir: boot.dataDir,
+      );
+      if (profile == null) return;
+
+      final position = await LocalProfiles.loadStudentPosition(
+        dataDir: boot.dataDir,
+        profile: profile,
+      );
+
+      final features = NativeFeatures(
+        dataDir: boot.dataDir,
+        nativeLibDir: boot.nativeLibDir,
+      );
+      NativeCli? cli;
+      if (File(boot.cliPath).existsSync()) {
+        cli = NativeCli(exePath: boot.cliPath, dataDir: boot.dataDir);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _session = Session(
+          cli: cli,
+          features: features,
+          dataDir: boot.dataDir,
+          profile: profile.copyWith(position: position),
+        );
+      });
+    } catch (_) {
+      await LocalProfiles.clearAutoLogin(boot.dataDir);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localeProvider = Provider.of<LocaleProvider>(context);
+    final isEn = localeProvider.isEnglish;
+    final fontFamily = isEn ? 'Fredoka' : 'NotoSansSC';
+    final platformBrightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final effectiveBrightness = localeProvider.themeMode == ThemeMode.system
+        ? platformBrightness
+        : (localeProvider.themeMode == ThemeMode.dark
+            ? Brightness.dark
+            : Brightness.light);
+    final overlayStyle = effectiveBrightness == Brightness.dark
+        ? const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
+          )
+        : const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
+          );
+    if (_appliedOverlayStyle != overlayStyle) {
+      _appliedOverlayStyle = overlayStyle;
+      SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+    }
+
+    final baseTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF6750A4),
+        brightness: Brightness.light,
+        surface: const Color(0xFFF7F7FE),
+        surfaceContainerLowest: Colors.white,
+        surfaceContainerLow: const Color(0xFFEEECF8),
+        surfaceContainer: const Color(0xFFE6E0E9),
+        surfaceContainerHigh: const Color(0xFFDFDAE3),
+        surfaceContainerHighest: const Color(0xFFD7D2DB),
+      ),
+      useMaterial3: true,
+      visualDensity: VisualDensity.comfortable,
+      fontFamily: fontFamily,
+      fontFamilyFallback: isEn ? const ['NotoSansSC'] : null,
+    );
+
+    final darkTheme = ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF6750A4),
+        brightness: Brightness.dark,
+      ),
+      useMaterial3: true,
+      visualDensity: VisualDensity.comfortable,
+      fontFamily: isEn ? 'Fredoka' : 'NotoSansSC',
+      fontFamilyFallback: isEn ? const ['NotoSansSC'] : null,
+    );
+
+    const expressiveRadius = 24.0;
+    const extraExpressiveRadius = 32.0;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: MaterialApp(
+        title: "Life's Been Good System",
+        debugShowCheckedModeBanner: false,
+        locale: localeProvider.locale,
+        themeMode: localeProvider.themeMode,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
+        theme: baseTheme.copyWith(
+          textTheme: baseTheme.textTheme.apply(
+            bodyColor: const Color(0xFF1C1B1F),
+            displayColor: const Color(0xFF1C1B1F),
+          ),
+          scaffoldBackgroundColor: const Color(0xFFF8F9FF),
+          appBarTheme: AppBarTheme(
+            centerTitle: false,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: baseTheme.colorScheme.onSurface,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.dark,
+              statusBarBrightness: Brightness.light,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: Brightness.dark,
+            ),
+          ),
+          cardTheme: CardThemeData(
+            elevation: 0,
+            color: baseTheme.colorScheme.surfaceContainerLow,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+              side: BorderSide.none,
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            indicatorColor: baseTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationDrawerTheme: NavigationDrawerThemeData(
+            backgroundColor: Colors.white.withValues(alpha: 204),
+            indicatorColor: baseTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationRailTheme: NavigationRailThemeData(
+            backgroundColor: Colors.white.withValues(alpha: 204),
+            indicatorColor: baseTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          floatingActionButtonTheme: FloatingActionButtonThemeData(
+            elevation: 0,
+            hoverElevation: 0,
+            focusElevation: 0,
+            backgroundColor: baseTheme.colorScheme.primaryContainer,
+            foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
+            splashColor: baseTheme.colorScheme.primary.withValues(alpha: 26),
+            shape: const CircleBorder(),
+          ),
+          iconButtonTheme: IconButtonThemeData(
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return baseTheme.colorScheme.secondaryContainer;
+                  }
+                  return null;
+                },
+              ),
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const CircleBorder();
+                },
+              ),
+            ),
+          ),
+          segmentedButtonTheme: SegmentedButtonThemeData(
+            style: ButtonStyle(
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              side: WidgetStatePropertyAll(
+                BorderSide(
+                  color: baseTheme.colorScheme.outlineVariant
+                      .withValues(alpha: 128),
+                ),
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return baseTheme.colorScheme.primaryContainer;
+                  }
+                  return baseTheme.colorScheme.surfaceContainerLow;
+                },
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return baseTheme.colorScheme.onPrimaryContainer;
+                  }
+                  return baseTheme.colorScheme.onSurfaceVariant;
+                },
+              ),
+              overlayColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return baseTheme.colorScheme.primary.withValues(alpha: 26);
+                  }
+                  return null;
+                },
+              ),
+              textStyle: WidgetStatePropertyAll(
+                baseTheme.textTheme.labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              elevation: 0,
+              backgroundColor: baseTheme.colorScheme.primaryContainer,
+              foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
+              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 20),
+              surfaceTintColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            ).copyWith(
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const StadiumBorder();
+                },
+              ),
+            ),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              backgroundColor: baseTheme.colorScheme.surfaceContainerLow,
+              foregroundColor: baseTheme.colorScheme.onSurface,
+              side: BorderSide(
+                color:
+                    baseTheme.colorScheme.outlineVariant.withValues(alpha: 128),
+              ),
+              elevation: 0,
+              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 16),
+              surfaceTintColor: Colors.transparent,
+            ).copyWith(
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const StadiumBorder();
+                },
+              ),
+            ),
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom().copyWith(
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const StadiumBorder();
+                },
+              ),
+            ),
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: baseTheme.colorScheme.surfaceContainer,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide:
+                  BorderSide(color: baseTheme.colorScheme.primary, width: 2),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          ),
+          dialogTheme: DialogThemeData(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(extraExpressiveRadius)),
+            backgroundColor: baseTheme.colorScheme.surfaceContainerHighest,
+          ),
+          bottomSheetTheme: BottomSheetThemeData(
+            backgroundColor: baseTheme.colorScheme.surfaceContainerHighest,
+            shape: const RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.all(Radius.circular(extraExpressiveRadius)),
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          menuTheme: MenuThemeData(
+            style: MenuStyle(
+              shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              )),
+              elevation: const WidgetStatePropertyAll(4),
+            ),
+          ),
+        ),
+        builder: (context, child) {
+          return Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFF8F9FF), Color(0xFFF0F2F8)],
+              ),
+            ),
+            child: child,
+          );
+        },
+        darkTheme: darkTheme.copyWith(
+          scaffoldBackgroundColor: darkTheme.colorScheme.surface,
+          appBarTheme: AppBarTheme(
+            centerTitle: false,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: darkTheme.colorScheme.onSurface,
+            systemOverlayStyle: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: Brightness.light,
+            ),
+          ),
+          cardTheme: CardThemeData(
+            elevation: 0,
+            color: darkTheme.colorScheme.surfaceContainerLow,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+              side: BorderSide.none,
+            ),
+            clipBehavior: Clip.antiAlias,
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            indicatorColor: darkTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationDrawerTheme: NavigationDrawerThemeData(
+            backgroundColor: Colors.black.withValues(alpha: 204),
+            indicatorColor: darkTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          navigationRailTheme: NavigationRailThemeData(
+            backgroundColor: Colors.black.withValues(alpha: 204),
+            indicatorColor: darkTheme.colorScheme.secondaryContainer,
+            indicatorShape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(expressiveRadius),
+            ),
+          ),
+          floatingActionButtonTheme: FloatingActionButtonThemeData(
+            elevation: 1,
+            hoverElevation: 2,
+            focusElevation: 2,
+            backgroundColor: darkTheme.colorScheme.primaryContainer,
+            foregroundColor: darkTheme.colorScheme.onPrimaryContainer,
+            splashColor: darkTheme.colorScheme.primary.withValues(alpha: 26),
+            shape: const CircleBorder(),
+          ),
+          iconButtonTheme: IconButtonThemeData(
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return darkTheme.colorScheme.secondaryContainer;
+                  }
+                  return null;
+                },
+              ),
+              shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
+                (states) {
+                  if (states.contains(WidgetState.pressed)) {
+                    return RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    );
+                  }
+                  return const CircleBorder();
+                },
+              ),
+            ),
+          ),
+          segmentedButtonTheme: SegmentedButtonThemeData(
+            style: ButtonStyle(
+              shape: WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              side: WidgetStatePropertyAll(
+                BorderSide(
+                  color: darkTheme.colorScheme.outlineVariant
+                      .withValues(alpha: 128),
+                ),
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return darkTheme.colorScheme.primaryContainer;
+                  }
+                  return darkTheme.colorScheme.surfaceContainerLow;
+                },
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return darkTheme.colorScheme.onPrimaryContainer;
+                  }
+                  return darkTheme.colorScheme.onSurfaceVariant;
+                },
+              ),
+            ),
+          ),
+        ),
+        home: PageTransitionSwitcher(
+          duration: const Duration(milliseconds: 300),
+          transitionBuilder: (Widget child, Animation<double> primaryAnimation,
+              Animation<double> secondaryAnimation) {
+            return FadeThroughTransition(
+              animation: primaryAnimation,
+              secondaryAnimation: secondaryAnimation,
+              child: child,
+            );
+          },
+          child: _boot == null
+              ? BootstrapPage(
+                  key: const ValueKey('boot'),
+                  onReady: (r) {
+                    setState(() {
+                      _boot = r;
+                    });
+                    _tryAutoLogin(r);
+                  },
+                )
+              : _session == null
+                  ? LoginPage(
+                      key: const ValueKey('login'),
+                      dataDir: _boot!.dataDir,
+                      cliPath: _boot!.cliPath,
+                      nativeLibDir: _boot!.nativeLibDir,
+                      onLoggedIn: (s) {
+                        setState(() {
+                          _session = s;
+                        });
+                      },
+                    )
+                  : ShellPage(
+                      key: const ValueKey('shell'),
+                      session: _session!,
+                      onLogout: () {
+                        final boot = _boot;
+                        if (boot != null) {
+                          LocalProfiles.clearAutoLogin(boot.dataDir);
+                        }
+                        setState(() {
+                          _session = null;
+                        });
+                      },
+                    ),
+        ),
+      ),
+    );
+  }
+}
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../models/course.dart';
+import '../models/student.dart';
+import '../models/timetable_item.dart';
+import '../main.dart';
+import '../services/local_profiles.dart';
+import '../state/session.dart';
+import '../widgets/expressive_ui.dart';
+
+class AttendancePage extends StatefulWidget {
+  final Session session;
+  final String? courseId;
+  final String? courseName;
+  final VoidCallback? onReady;
+  final bool isStandalone;
+
+  const AttendancePage({
+    super.key,
+    required this.session,
+    this.courseId,
+    this.courseName,
+    this.onReady,
+    this.isStandalone = false,
+  });
+
+  @override
+  State<AttendancePage> createState() => _AttendancePageState();
+}
+
+class _AttendancePageState extends State<AttendancePage> {
+  bool _loading = true;
+  String _status = '';
+  bool _dataReady = true;
+
+  List<Course> _allCourses = [];
+  List<TimetableItem> _allTimetable = [];
+  List<Student> _allStudents = [];
+
+  List<String> _myClasses = [];
+  String? _selectedClass;
+
+  List<Course> _displayCourses = [];
+  Course? _selectedCourse;
+
+  List<Student> _displayStudents = [];
+
+  String _batchStatus = '';
+  bool _batchSubmitting = false;
+
+  String? _sessionId;
+  final Map<String, String> _marking = {};
+
+  TimetableItem? _activeCourse;
+  TimetableItem? _nextCourse;
+
+  List<Map<String, String>> _allSessions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_onSessionChanged);
+    _initData();
+  }
+
+  @override
+  void dispose() {
+    widget.session.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (mounted) {
+      _initData(isBackground: true);
+    }
+  }
+
+  static int _hhmmToMinutes(String hhmm) {
+    final s = hhmm.trim();
+    final parts = s.split(':');
+    if (parts.length != 2) return 0;
+    final h = int.tryParse(parts[0]) ?? 0;
+    final m = int.tryParse(parts[1]) ?? 0;
+    return h * 60 + m;
+  }
+
+  static int _weekdayNow() {
+    final w = DateTime.now().weekday;
+    if (w == DateTime.sunday) return 7;
+    return w;
+  }
+
+  Future<void> _initData({bool isBackground = false}) async {
+    // Notify ShellPage that we are ready to show IMMEDIATELY to avoid transition lag
+    if (widget.onReady != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onReady?.call();
+      });
+    }
+
+    // Completely avoid loading state if we already have some data
+    if (!isBackground && !_dataReady) {
+      setState(() {
+        _status = '';
+      });
+    }
+
+    // Ensure data schema is up-to-date
+    // Removed old schema update methods
+
+    if (widget.session.isTeacher) {
+      _myClasses = await LocalProfiles.getTeacherClasses(
+        widget.session.dataDir,
+        widget.session.profile.id,
+      );
+    } else {
+      _myClasses = [widget.session.profile.classCode.trim()];
+    }
+
+    try {
+      if (_myClasses.isNotEmpty && _selectedClass == null) {
+        _selectedClass = _myClasses.first;
+      }
+
+      // 2. Fetch all necessary data in parallel to reduce first paint latency
+      final coursesFuture = widget.session.features.listCourses();
+      final ttFuture = widget.session.features.listTimetable();
+      final studentsFuture = widget.session.features.listStudents();
+      final coursesRes = await coursesFuture;
+      final ttRes = await ttFuture;
+      final studentsRes = await studentsFuture;
+
+      if (coursesRes['ok'] == true) {
+        final items = (coursesRes['data']?['items'] as List?) ?? [];
+        _allCourses = items.map((e) => Course.fromJson(e)).toList();
+      }
+
+      if (ttRes['ok'] == true) {
+        final items = (ttRes['data']?['items'] as List?) ?? [];
+        _allTimetable = items.map((e) => TimetableItem.fromJson(e)).toList();
+      }
+
+      if (studentsRes['ok'] == true) {
+        final items = (studentsRes['data']?['items'] as List?) ?? [];
+        final uniqueStudents = <String, Student>{};
+        for (final e in items) {
+          final s = Student.fromJson(e);
+          final key = s.studentNo.trim().toLowerCase();
+          if (key.isNotEmpty) {
+            // Keep the one that has a position if possible
+            if (uniqueStudents.containsKey(key)) {
+              if (s.position.isNotEmpty &&
+                  uniqueStudents[key]!.position.isEmpty) {
+                uniqueStudents[key] = s;
+              }
+            } else {
+              uniqueStudents[key] = s;
+            }
+          } else {
+            // If no student number, use ID as fallback for uniqueness
+            uniqueStudents[s.id] = s;
+          }
+        }
+        _allStudents = uniqueStudents.values.toList();
+      }
+
+      final sessionsRes = await widget.session.features
+          .csvOp(action: 'read', file: 'attendance_sessions.csv');
+
+      if (sessionsRes['ok'] == true) {
+        final items =
+            ((sessionsRes['data'] ?? const {})['items'] as List?) ?? [];
+        _allSessions =
+            items.map((e) => (e as Map).cast<String, String>()).toList();
+      }
+
+      if (!mounted) return;
+      await _refreshDisplay();
+      if (!mounted) return;
+      setState(() {
+        _loading = false; // Always clear loading after success
+        _dataReady = true;
+      });
+      widget.onReady?.call();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _dataReady = true;
+        _status = e.toString();
+      });
+      widget.onReady?.call();
+    }
+  }
+
+  Future<void> _refreshDisplay() async {
+    if (_selectedClass == null) {
+      if (mounted) setState(() => _loading = false);
+      widget.onReady?.call();
+      return;
+    }
+
+    // Filter students for the selected class
+    _displayStudents = _allStudents
+        .where((s) => s.classCode.trim() == _selectedClass)
+        .toList();
+    _displayStudents.sort((a, b) => a.studentNo.compareTo(b.studentNo));
+
+    // Determine today's schedule for this class or teacher
+    final today = _weekdayNow();
+    final now = DateTime.now();
+    final nowMin = now.hour * 60 + now.minute;
+
+    // A course is relevant if it's assigned to this class OR this teacher
+    final relevantTt = _allTimetable.where((e) {
+      final isMyClass = e.ownerProfileId == 'class_$_selectedClass';
+      final isMyCourse = e.createdByProfileId == widget.session.profile.id;
+      // Also include courses that belong to the current class even if created by someone else
+      // This allows cadres to take attendance for courses in their class.
+      return isMyClass || (widget.session.isTeacher && isMyCourse);
+    }).toList();
+
+    final todayTt = relevantTt.where((e) => e.weekday == today).toList();
+    todayTt.sort((a, b) =>
+        _hhmmToMinutes(a.startTime).compareTo(_hhmmToMinutes(b.startTime)));
+
+    // Smart matching
+    TimetableItem? active;
+    TimetableItem? next;
+    for (var i = 0; i < todayTt.length; i++) {
+      final it = todayTt[i];
+      final s = _hhmmToMinutes(it.startTime);
+      final e = _hhmmToMinutes(it.endTime);
+      if (nowMin >= s && nowMin <= e) {
+        active = it;
+        // next is the one right after this
+        if (i + 1 < todayTt.length) {
+          next = todayTt[i + 1];
+        }
+        break;
+      }
+    }
+
+    // If no course is currently happening, pick the next one today
+    if (active == null) {
+      for (final it in todayTt) {
+        if (_hhmmToMinutes(it.startTime) > nowMin) {
+          next = it;
+          break;
+        }
+      }
+    }
+
+    _activeCourse = active;
+    _nextCourse = next;
+
+    // Filter courses that appear in the relevant timetable
+    final relevantCourseIds = relevantTt.map((e) => e.courseId).toSet();
+    _displayCourses =
+        _allCourses.where((c) => relevantCourseIds.contains(c.id)).toList();
+
+    // Fallback if no specific course selected via widget
+    if (_selectedCourse == null) {
+      if (widget.courseId != null) {
+        _selectedCourse =
+            _allCourses.where((c) => c.id == widget.courseId).firstOrNull;
+      } else if (active != null) {
+        _selectedCourse =
+            _allCourses.where((c) => c.id == active!.courseId).firstOrNull;
+      }
+    }
+
+    // Ensure _selectedCourse is in _displayCourses, otherwise pick first
+    if (_selectedCourse != null && !_displayCourses.contains(_selectedCourse)) {
+      _selectedCourse = null;
+    }
+
+    if (_selectedCourse == null && _displayCourses.isNotEmpty) {
+      _selectedCourse = _displayCourses.first;
+    }
+
+    // Try to restore session
+    String? restoredSessionId;
+    final marks = <String, String>{};
+    final studentsOnLeaveToday = <String>{};
+
+    if (_selectedCourse != null && _sessionId == null) {
+      try {
+        final sessionsFile =
+            File('${widget.session.dataDir}/attendance_sessions.csv');
+        if (await sessionsFile.exists()) {
+          final sContent = await sessionsFile.readAsString();
+          final sLines =
+              sContent.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+          final now = DateTime.now();
+          bool isToday(String dateStr) {
+            final s = dateStr.trim();
+            if (s.isEmpty) return false;
+            try {
+              final dt = DateTime.parse(s).toLocal();
+              return dt.year == now.year &&
+                  dt.month == now.month &&
+                  dt.day == now.day;
+            } catch (_) {
+              return s.startsWith(now.toIso8601String().substring(0, 10));
+            }
+          }
+
+          final todaySessionIds = <String>{};
+
+          if (sLines.length > 1) {
+            for (var i = 1; i < sLines.length; i++) {
+              final parts = sLines[i].split(',');
+              if (parts.length >= 4) {
+                final id = parts[0];
+                final cid = parts[1];
+                final startedAt = parts[3];
+
+                if (isToday(startedAt)) {
+                  todaySessionIds.add(id);
+                  if (cid == _selectedCourse!.id) {
+                    restoredSessionId = id;
+                  }
+                }
+              }
+            }
+          }
+
+          if (todaySessionIds.isNotEmpty) {
+            final recordsFile =
+                File('${widget.session.dataDir}/attendance_records.csv');
+            if (await recordsFile.exists()) {
+              final content = await recordsFile.readAsString();
+              final lines = content
+                  .split('\n')
+                  .where((l) => l.trim().isNotEmpty)
+                  .toList();
+              if (lines.length > 1) {
+                for (var i = 1; i < lines.length; i++) {
+                  final parts = lines[i].split(',');
+                  if (parts.length >= 4) {
+                    final sid = parts[1];
+                    final studentId = parts[2];
+                    final status = parts[3];
+                    if (todaySessionIds.contains(sid)) {
+                      if (status == 'leave') {
+                        studentsOnLeaveToday.add(studentId);
+                      }
+                      if (sid == restoredSessionId) {
+                        marks[studentId] = status;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    } else if (_sessionId != null) {
+      // Load specific session
+      restoredSessionId = _sessionId;
+      try {
+        final recordsFile =
+            File('${widget.session.dataDir}/attendance_records.csv');
+        if (await recordsFile.exists()) {
+          final content = await recordsFile.readAsString();
+          final lines =
+              content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+          if (lines.length > 1) {
+            for (var i = 1; i < lines.length; i++) {
+              final parts = lines[i].split(',');
+              if (parts.length >= 4) {
+                final sid = parts[1];
+                final studentId = parts[2];
+                final status = parts[3];
+                if (sid == restoredSessionId) {
+                  marks[studentId] = status;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _dataReady = true;
+      _sessionId = restoredSessionId;
+      _marking.clear();
+      for (final s in _displayStudents) {
+        _marking[s.id] = marks[s.id] ??
+            (studentsOnLeaveToday.contains(s.id) ? 'leave' : _batchStatus);
+      }
+    });
+    widget.onReady?.call();
+
+    // Auto-start session if none exists to allow direct marking
+    if (_sessionId == null && _selectedCourse != null) {
+      await _startSession();
+    }
+  }
+
+  int _calculateCurrentWeek() {
+    final now = DateTime.now();
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final diff = now.difference(firstWeekStart).inDays;
+    if (diff < 0) return 1;
+    final week = (diff / 7).floor() + 1;
+    return week.clamp(1, 20);
+  }
+
+  Future<void> _startSession({bool silent = false}) async {
+    if (_selectedCourse == null) return;
+
+    if (!silent) {
+      if (!mounted) return;
+      setState(() {
+        _loading = true;
+        _status = '';
+      });
+    }
+
+    try {
+      int? period;
+      if (_selectedCourse!.id == _activeCourse?.courseId) {
+        period = _activeCourse!.startPeriod;
+      } else if (_selectedCourse!.id == _nextCourse?.courseId) {
+        period = _nextCourse!.startPeriod;
+      }
+
+      final res = await widget.session.features.startAttendanceSession(
+        courseId: _selectedCourse!.id,
+        createdByProfileId: widget.session.profile.id,
+        week: _calculateCurrentWeek(),
+        period: period,
+      );
+
+      if (res['ok'] == true) {
+        final sessionId = res['data']?['session_id']?.toString();
+        if (!mounted) return;
+        setState(() {
+          _sessionId = sessionId;
+          _loading = false;
+        });
+      } else {
+        if (!mounted) return;
+        final loc = Provider.of<LocaleProvider>(context, listen: false);
+        throw res['error']?['message'] ??
+            loc.t('启动点名失败', 'Failed to start attendance');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _status = e.toString();
+      });
+      widget.onReady?.call();
+    }
+  }
+
+  Future<void> _submitMark(Student s, String status) async {
+    if (_sessionId == null) {
+      await _startSession(silent: true);
+    }
+    if (_sessionId == null) return;
+
+    try {
+      await widget.session.features.markAttendanceRecord(
+        sessionId: _sessionId!,
+        studentId: s.id,
+        status: status,
+        markedByProfileId: widget.session.profile.id,
+      );
+    } catch (e) {
+      debugPrint('Mark error: $e');
+    }
+  }
+
+  Future<void> _applyBatchToAll({required bool submitIfStarted}) async {
+    if (_displayStudents.isEmpty) return;
+
+    if (submitIfStarted && _sessionId == null && _selectedCourse != null) {
+      await _startSession();
+    }
+
+    if (submitIfStarted && _sessionId == null) return;
+
+    setState(() {
+      _batchSubmitting = submitIfStarted;
+      for (final s in _displayStudents) {
+        _marking[s.id] = _batchStatus;
+      }
+    });
+
+    if (!submitIfStarted) return;
+
+    for (final s in _displayStudents) {
+      if (!mounted) return;
+      await _submitMark(s, _batchStatus);
+    }
+
+    if (mounted) {
+      setState(() => _batchSubmitting = false);
+      final loc = Provider.of<LocaleProvider>(context, listen: false);
+      showExpressiveSnackBar(
+        context,
+        loc.t('已批量提交全班为：', 'Batch submitted class as: ') +
+            _statusLabel(_batchStatus, loc),
+      );
+    }
+  }
+
+  String _statusLabel(String s, LocaleProvider loc) {
+    switch (s) {
+      case 'present':
+        return loc.t('到', 'Present');
+      case 'late':
+        return loc.t('迟到', 'Late');
+      case 'absent':
+        return loc.t('缺勤', 'Absent');
+      case 'leave':
+        return loc.t('请假', 'Leave');
+      default:
+        return loc.t('未标记', 'Unmarked');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final loc = Provider.of<LocaleProvider>(context);
+
+    final loader = Center(
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+
+    final isDesktop = MediaQuery.of(context).size.width >= 1024;
+    final isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    final isPushed = widget.isStandalone;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton = (!isDesktop || isPortrait) &&
+        !isPushed &&
+        !(Platform.isAndroid && isTablet);
+
+    if (!widget.session.canTakeAttendance) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(loc.t('点名', 'Roll Call')),
+          leading: isPushed
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                )
+              : null,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_person_outlined, size: 64, color: cs.error),
+              const SizedBox(height: 16),
+              Text(
+                loc.t('当前角色无点名权限',
+                    'Your role does not have permission to take attendance'),
+                style: tt.titleMedium?.copyWith(color: cs.error),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${loc.t('当前职位', 'Current Position')}: ${widget.session.studentPosition.isEmpty ? loc.t('无', 'None') : widget.session.studentPosition}',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${loc.t('账号信息', 'Account Info')}: ${widget.session.profile.studentNo.isNotEmpty ? widget.session.profile.studentNo : widget.session.profile.staffNo} (${widget.session.profile.role})',
+                style: tt.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant, fontSize: 10),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${loc.t('真实姓名', 'Real Name')}: ${widget.session.profile.realName}',
+                style: tt.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant, fontSize: 10),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  setState(() => _loading = true);
+                  try {
+                    final pos = await LocalProfiles.loadStudentPosition(
+                      dataDir: widget.session.dataDir,
+                      profile: widget.session.profile,
+                    );
+                    if (!mounted) return;
+                    widget.session.profile =
+                        widget.session.profile.copyWith(position: pos);
+                    showExpressiveSnackBar(
+                        context, loc.t('已刷新权限', 'Permissions refreshed'));
+                  } catch (e) {
+                    if (!mounted) return;
+                    showExpressiveSnackBar(context, e.toString());
+                  } finally {
+                    if (mounted) setState(() => _loading = false);
+                  }
+                },
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(loc.t('刷新职位信息', 'Refresh Position')),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        titleSpacing: (showDrawerButton || isPushed) ? 0 : 16.0,
+        leadingWidth: (showDrawerButton || isPushed) ? 56.0 : 16.0,
+        leading: isPushed
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.pop(context),
+              )
+            : showDrawerButton
+                ? Builder(
+                    builder: (context) {
+                      return IconButton(
+                        icon: const Icon(Icons.menu),
+                        onPressed: () {
+                          ScaffoldState? scaffold = Scaffold.maybeOf(context);
+                          if (scaffold != null && !scaffold.hasDrawer) {
+                            scaffold = scaffold.context
+                                .findAncestorStateOfType<ScaffoldState>();
+                          }
+                          scaffold?.openDrawer();
+                        },
+                      );
+                    },
+                  )
+                : const SizedBox.shrink(),
+        title: Text(loc.t('考勤点名', 'Roll Call'),
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: false,
+        actions: [
+          if (_myClasses.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(
+                child: ExpressiveSelector(
+                  label: loc.t('班级', 'Class'),
+                  value: _selectedClass,
+                  items: _myClasses,
+                  onSelected: (v) {
+                    setState(() {
+                      _selectedClass = v;
+                      _loading = true;
+                    });
+                    _refreshDisplay();
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+      body: !_dataReady
+          ? loader
+          : Stack(
+              children: [
+                CustomScrollView(
+                  key: const ValueKey('content'),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_status.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                child: Text(_status,
+                                    style: TextStyle(color: cs.error)),
+                              ),
+                            _buildDashboardGroup(cs, tt),
+                            _buildBatchBar(cs, tt),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_displayStudents.isEmpty && !_loading)
+                      SliverFillRemaining(
+                        child: Center(
+                          child: Text(
+                              loc.t('该班级暂无学生', 'No students in this class'),
+                              style: tt.bodyLarge),
+                        ),
+                      )
+                    else if (_displayStudents.isEmpty && _loading)
+                      SliverFillRemaining(
+                        child: const SizedBox.shrink(),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final s = _displayStudents[index];
+                              return _StudentCard(
+                                key: ValueKey(s.id),
+                                student: s,
+                                mark: _marking[s.id] ?? '',
+                                onMark: (status) {
+                                  _marking[s.id] = status;
+                                  _submitMark(s, status);
+                                },
+                              );
+                            },
+                            childCount: _displayStudents.length,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (_loading)
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: LinearProgressIndicator(),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildDashboardGroup(ColorScheme cs, TextTheme tt) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainer,
+        borderRadius: BorderRadius.circular(32), // MD3 large shape
+      ),
+      child: Column(
+        children: [
+          _buildTimeInfoSection(cs, tt),
+          const Divider(height: 1, indent: 16, endIndent: 16),
+          _buildHeaderSection(cs, tt),
+          const Divider(height: 1, indent: 16, endIndent: 16),
+          _buildRecentHistorySection(cs, tt),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentHistorySection(ColorScheme cs, TextTheme tt) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final now = DateTime.now();
+    bool isToday(String dateStr) {
+      final s = dateStr.trim();
+      if (s.isEmpty) return false;
+      try {
+        final dt = DateTime.parse(s).toLocal();
+        return dt.year == now.year &&
+            dt.month == now.month &&
+            dt.day == now.day;
+      } catch (_) {
+        return s.startsWith(now.toIso8601String().substring(0, 10));
+      }
+    }
+
+    final todaySessions = _allSessions.where((s) {
+      final startedAt = s['started_at'] ?? '';
+      return isToday(startedAt);
+    }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(loc.t('今日点名记录', 'Today\'s Attendance'),
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: _showFullHistory,
+                child: Text(loc.t('查看全部', 'View All')),
+              ),
+            ],
+          ),
+          if (todaySessions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(loc.t('今日暂无记录', 'No records today'),
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            )
+          else
+            ...todaySessions.take(3).map((s) {
+              final course =
+                  _allCourses.where((c) => c.id == s['course_id']).firstOrNull;
+              final cName = course?.courseName ??
+                  s['course_id'] ??
+                  loc.t('未知课程', 'Unknown Course');
+              final ttItem = _allTimetable
+                  .where((t) => t.courseId == s['course_id'])
+                  .firstOrNull;
+              String className = '';
+              if (ttItem != null &&
+                  ttItem.ownerProfileId.startsWith('class_')) {
+                className = ttItem.ownerProfileId.replaceFirst('class_', '');
+              }
+              String date = '';
+              String time = '';
+              try {
+                final dt = DateTime.parse(s['started_at']!).toLocal();
+            courseId: cid,
+            location: location,
+            creator: owner,
+            isLocked: true,
+            weeks: weeks,
+          );
+          if (r2['ok'] != true) {
+            throw ((r2['error'] ?? const {}) as Map)['message'] ??
+                loc.t('保存课表失败', 'Failed to save schedule');
+          }
+        } else {
+          final r = await widget.session.features.insertTimetableItem(
+            id: nextTtId(),
+            owner: _viewingProfileId,
+            weekday: weekday,
+            startPeriod: start,
+            endPeriod: end,
+            startTime: sp.start,
+            endTime: ep.end,
+            courseId: cid,
+            location: location,
+            creator: owner,
+            isLocked: false,
+            weeks: weeks,
+          );
+          if (r['ok'] != true) {
+            throw ((r['error'] ?? const {}) as Map)['message'] ??
+                loc.t('保存课表失败', 'Failed to save schedule');
+          }
+        }
+      }
+
+      await _refresh();
+      if (mounted) {
+        final target = _viewingProfileId.startsWith('class_')
+            ? '${loc.t('班级', 'Class')} ${_viewingProfileId.substring('class_'.length)}'
+            : loc.t('我的课表', 'Timetable');
+        showExpressiveSnackBar(
+          context,
+          loc.t('成功添加课程到：$target', 'Course added to: $target'),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showExpressiveSnackBar(context, e.toString());
+    }
+  }
+
+  Map<int, Map<int, TimetableItem>> get _cellItems {
+    final byDay = <int, Map<int, TimetableItem>>{};
+    for (final item in _items) {
+      if (!item.isWeekIncluded(_currentWeek)) continue;
+      final day = item.weekday;
+      var period = item.period;
+      if (period <= 0) {
+        period = _findPeriodForTimes(item.startTime, item.endTime);
+      }
+      if (period <= 0) {
+        continue;
+      }
+      byDay.putIfAbsent(day, () => {})[period] = item;
+    }
+    return byDay;
+  }
+
+  Future<void> _importWakeupSchedule() async {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['wakeup_schedule', 'json', 'txt'],
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) return;
+      if (!mounted) return;
+      final path = result.files.first.path;
+      if (path == null) return;
+
+      final content = await File(path).readAsString();
+      if (!mounted) return;
+
+      // Parse the 5 JSON blocks
+      // A simple way to split them is by finding the top-level structures
+      final blocks = <String>[];
+      int braceDepth = 0;
+      int bracketDepth = 0;
+      int start = -1;
+      bool inString = false;
+
+      for (int i = 0; i < content.length; i++) {
+        final c = content[i];
+        if (c == '"' && (i == 0 || content[i - 1] != '\\')) {
+          inString = !inString;
+        }
+        if (!inString) {
+          if (c == '{') braceDepth++;
+          if (c == '}') braceDepth--;
+          if (c == '[') bracketDepth++;
+          if (c == ']') bracketDepth--;
+        }
+
+        if (start == -1 && !inString && (c == '{' || c == '[')) {
+          start = i;
+        }
+
+        if (start != -1 && braceDepth == 0 && bracketDepth == 0) {
+          blocks.add(content.substring(start, i + 1));
+          start = -1;
+        }
+      }
+
+      if (blocks.length < 5) {
+        throw loc.t(
+            '无效的 wakeup_schedule 文件格式', 'Invalid wakeup_schedule file format');
+      }
+
+      final itemsJson = jsonDecode(blocks[4]) as List;
+
+      setState(() {
+        _status = loc.t('正在导入...', 'Importing...');
+      });
+
+      final owner = widget.session.profile.id;
+      final base = DateTime.now().microsecondsSinceEpoch;
+      var seq = 0;
+      String nextTtId() => 'tt_${base}_${seq++}';
+
+      // Import Courses
+      final coursesJson = jsonDecode(blocks[3]) as List;
+      final courseIdMap = <int, String>{};
+      for (final c in coursesJson) {
+        final map = c as Map<String, dynamic>;
+        final oldId = map['id'] as int;
+        final name = (map['courseName'] ?? '').toString();
+        final credit = (map['credit'] ?? 0).toString();
+        final note = (map['note'] ?? '').toString();
+        final colorStr = (map['color'] ?? '').toString();
+        String parsedColor = '';
+        if (colorStr.startsWith('#') && colorStr.length == 9) {
+          parsedColor = int.parse(colorStr.substring(1), radix: 16).toString();
+        }
+
+        final newCid = 'c_${base}_${seq++}';
+        courseIdMap[oldId] = newCid;
+
+        final res = await widget.session.features.insertCourse(
+          id: newCid,
+          name: name,
+          teacherId: owner,
+          term: '2026S',
+          color: parsedColor,
+          credits: credit,
+          notes: note,
+        );
+        if (res['ok'] != true) throw loc.t('保存课程失败', 'Failed to save course');
+      }
+
+      // Import Timetable Items
+      for (final item in itemsJson) {
+        final map = item as Map<String, dynamic>;
+        final oldCid = map['id'] as int;
+        final newCid = courseIdMap[oldCid];
+        if (newCid == null) continue;
+
+        final day = map['day'] as int;
+        final startNode = map['startNode'] as int;
+        final step = map['step'] as int;
+        final endNode = startNode + step - 1;
+        final room = (map['room'] ?? '').toString();
+        final startWeek = map['startWeek'] ?? 1;
+        final endWeek = map['endWeek'] ?? 20;
+        final type = map['type'] ?? 0; // 0=all, 1=odd, 2=even
+
+        String weeksStr = '';
+        if (type == 0) {
+          weeksStr = '$startWeek-$endWeek';
+        } else {
+          final wList = <int>[];
+          for (var w = startWeek as int; w <= (endWeek as int); w++) {
+            if (type == 1 && w % 2 != 0) wList.add(w);
+            if (type == 2 && w % 2 == 0) wList.add(w);
+          }
+          weeksStr = wList.join(',');
+        }
+
+        // Find start/end time roughly based on period
+        final sp = _periods.firstWhere((e) => e.period == startNode,
+            orElse: () => _periods.first);
+        final ep = _periods.firstWhere((e) => e.period == endNode,
+            orElse: () => _periods.first);
+
+        if (widget.session.isTeacher &&
+            _viewingProfileId.startsWith('class_')) {
+          final targetClass = _viewingProfileId.substring('class_'.length);
+          final ids = await _studentProfileIds(classCode: targetClass);
+          for (final id in ids) {
+            await widget.session.features.insertTimetableItem(
+              id: nextTtId(),
+              owner: id,
+              weekday: day,
+              startPeriod: startNode,
+              endPeriod: endNode,
+              startTime: sp.start,
+              endTime: ep.end,
+              courseId: newCid,
+              location: room,
+              creator: owner,
+              isLocked: true,
+              weeks: weeksStr,
+            );
+          }
+          await widget.session.features.insertTimetableItem(
+            id: nextTtId(),
+            owner: _viewingProfileId,
+            weekday: day,
+            startPeriod: startNode,
+            endPeriod: endNode,
+            startTime: sp.start,
+            endTime: ep.end,
+            courseId: newCid,
+            location: room,
+            creator: owner,
+            isLocked: true,
+            weeks: weeksStr,
+          );
+        } else {
+          await widget.session.features.insertTimetableItem(
+            id: nextTtId(),
+            owner: _viewingProfileId,
+            weekday: day,
+            startPeriod: startNode,
+            endPeriod: endNode,
+            startTime: sp.start,
+            endTime: ep.end,
+            courseId: newCid,
+            location: room,
+            creator: owner,
+            isLocked: false,
+            weeks: weeksStr,
+          );
+        }
+      }
+
+      await _refresh();
+      if (mounted) {
+        showExpressiveSnackBar(
+          context,
+          loc.t('导入成功', 'Import succeeded'),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final loc = Provider.of<LocaleProvider>(context, listen: false);
+        setState(() {
+          _status = loc.t('导入失败: $e', 'Import failed: $e');
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Only rebuild parts that need it.
+    // The main Scaffold should be stable.
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isAndroid = Platform.isAndroid;
+    final isPortrait =
+        MediaQuery.of(context).orientation == Orientation.portrait;
+    final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
+    final showDrawerButton =
+        (!isDesktop || isPortrait) && !(Platform.isAndroid && isTablet);
+    final scrollPhysics = isAndroid
+        ? const ClampingScrollPhysics()
+        : const BouncingScrollPhysics();
+    final pagePhysics = const PageScrollPhysics().applyTo(scrollPhysics);
+    final titleStyle = Theme.of(context)
+        .textTheme
+        .titleLarge
+        ?.copyWith(fontWeight: FontWeight.bold);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: showDrawerButton ? 0 : 0,
+        leadingWidth: showDrawerButton ? 56.0 : 16.0,
+        leading: showDrawerButton
+            ? Builder(
+                builder: (context) {
+                  return IconButton(
+                    icon: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 24,
+                        height: 24,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    onPressed: () {
+                      ScaffoldState? scaffold = Scaffold.maybeOf(context);
+                      if (scaffold != null && !scaffold.hasDrawer) {
+                        scaffold = scaffold.context
+                            .findAncestorStateOfType<ScaffoldState>();
+                      }
+                      scaffold?.openDrawer();
+                    },
+                  );
+                },
+              )
+            : const SizedBox.shrink(),
+        title: widget.session.isTeacher && _teacherClasses.isNotEmpty
+            ? Transform.translate(
+                offset: Offset(showDrawerButton ? -8.0 : 0.0, 0.0),
+                child: isDesktop
+                    ? ExpressiveSelector(
+                        label: loc.t('班级', 'Class'),
+                        value: _viewingProfileId == widget.session.profile.id
+                            ? loc.t('我的课表', 'Timetable')
+                            : _viewingProfileId.replaceFirst('class_', ''),
+                        items: [
+                          loc.t('我的课表', 'Timetable'),
+                          ..._teacherClasses,
+                        ],
+                        backgroundColor: cs.tertiaryContainer,
+                        foregroundColor: cs.onTertiaryContainer,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 7),
+                        labelTextStyle: tt.labelSmall?.copyWith(
+                          color: cs.onTertiaryContainer.withValues(alpha: 179),
+                          fontWeight: FontWeight.bold,
+                          height: 1.1,
+                        ),
+                        valueTextStyle: tt.bodyMedium?.copyWith(
+                          fontSize: 13,
+                          color: cs.onTertiaryContainer,
+                          fontWeight: FontWeight.w700,
+                          height: 1.1,
+                        ),
+                        onSelected: (v) {
+                          final target = v == loc.t('我的课表', 'Timetable')
+                              ? widget.session.profile.id
+                              : 'class_$v';
+                          if (target != _viewingProfileId) {
+                            setState(() {
+                              _viewingProfileId = target;
+                            });
+                            unawaited(_saveUiPrefs());
+                            _refresh();
+                          }
+                        },
+                      )
+                    : PopupMenuButton<String>(
+                        tooltip: loc.t('选择班级', 'Select class'),
+                        initialValue:
+                            _viewingProfileId == widget.session.profile.id
+                                ? loc.t('我的课表', 'Timetable')
+                                : _viewingProfileId.replaceFirst('class_', ''),
+                        onSelected: (v) {
+                          final target = v == loc.t('我的课表', 'Timetable')
+                              ? widget.session.profile.id
+                              : 'class_$v';
+                          if (target != _viewingProfileId) {
+                            setState(() {
+                              _viewingProfileId = target;
+                            });
+                            unawaited(_saveUiPrefs());
+                            _refresh();
+                          }
+                        },
+                        itemBuilder: (context) {
+                          final items = [
+                            loc.t('我的课表', 'Timetable'),
+                            ..._teacherClasses,
+                          ];
+                          return items
+                              .map(
+                                (e) => PopupMenuItem<String>(
+                                  value: e,
+                                  child: Text(e),
+                                ),
+                              )
+                              .toList(growable: false);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: cs.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: cs.outlineVariant.withValues(alpha: 96),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _viewingProfileId == widget.session.profile.id
+                                    ? loc.t('我的课表', 'Timetable')
+                                    : _viewingProfileId.replaceFirst(
+                                        'class_', ''),
+                                style: TextStyle(
+                                  color: cs.onTertiaryContainer,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 20,
+                                color: cs.onTertiaryContainer,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+              )
+            : isDesktop
+                ? Text(
+                    loc.t('我的课表', 'Timetable'),
+                    style: titleStyle,
+                  )
+                : ValueListenableBuilder<int>(
+                    valueListenable: _currentWeekN,
+                    builder: (context, week, _) {
+                      return Text(
+                        loc.t('第$week周', 'Week $week'),
+                        style: titleStyle,
+                      );
+                    },
+                  ),
+        actions: [
+          if (isDesktop)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Center(
+                child: IconButton(
+                  tooltip: loc.t('导入 WakeUp 课程表', 'Import WakeUp Schedule'),
+                  onPressed: _importWakeupSchedule,
+                  icon: const Icon(Icons.file_upload_outlined),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(
+              child: FilledButton.tonal(
+                onPressed: () {
+                  setState(() {
+                    _showWeekend = !_showWeekend;
+                  });
+                  unawaited(_saveUiPrefs());
+                },
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(scale: animation, child: child),
+                    );
+                  },
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _currentWeekN,
+                    builder: (context, week, _) {
+                      return Text(
+                        _showWeekend
+                            ? loc.t('7日（第$week周）', '7 Days (Week $week)')
+                            : loc.t('5日（第$week周）', '5 Days (Week $week)'),
+                        key: ValueKey(_showWeekend),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'fab_timetable_add',
+        onPressed: () => _editCell(),
+        elevation: 1,
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+        shape: const CircleBorder(),
+        tooltip: loc.t('添加课程', 'Add Course'),
+        child: const Icon(Icons.add),
+      ),
+      body: Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: Column(
+          children: [
+            if (isDesktop)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: _buildWeekControl(),
+              ),
+            if (_status.isNotEmpty)
+              Container(
+                width: double.infinity,
+                color: Theme.of(context).colorScheme.errorContainer,
+                padding: const EdgeInsets.all(8),
+                child: Text(_status,
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                        fontSize: 12)),
+              ),
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                physics: pagePhysics,
+                onPageChanged: (index) {
+                  final w = (index + 1).clamp(1, 20);
+                  _currentWeek = w;
+                  _currentWeekN.value = w;
+                },
+                itemCount: 20,
+                itemBuilder: (context, index) {
+                  return _TimetableWeekView(
+                    week: index + 1,
+                    viewingProfileId: _viewingProfileId,
+                    showWeekend: _showWeekend,
+                    items: _items,
+                    courses: _courses,
+                    courseColors: _courseColors,
+                    onEditCell: _editCell,
+                    onShowActions: _showTimetableItemActions,
+                    onShowQuickMenu: _showCourseQuickMenu,
+                    isTeacher: widget.session.isTeacher,
+                    canTakeAttendance: widget.session.canTakeAttendance,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _goToWeek(int week) {
+    final w = week.clamp(1, 20);
+    if (w == _currentWeek) return;
+    _currentWeek = w;
+    _currentWeekN.value = w;
+    _pageController.animateToPage(
+      w - 1,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Widget _buildWeekControl() {
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+    return isDesktop
+        ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragEnd: (details) {
+              final v = details.primaryVelocity ?? 0;
+              if (v < -150) _goToWeek(_currentWeek + 1);
+              if (v > 150) _goToWeek(_currentWeek - 1);
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 128),
+                ),
+              ),
+              child: Center(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _currentWeekN,
+                  builder: (context, week, _) {
+                    return AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.15),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Text(
+                          loc.t('第 $week 周', 'Week $week'),
+                          key: ValueKey(week),
+                          style: tt.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface,
+                          ),
+                        ));
+                  },
+                ),
+              ),
+            ),
+          )
+        : const SizedBox.shrink();
+  }
+
+  // Removed unused internal build methods
+
+  Widget _buildWeekdayHeader({
+    required int targetWeek,
+    required List<int> visibleDays,
+    required double cellWidth,
+  }) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    // Assuming 2026 spring semester start date for date calculation
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final startOfTargetWeek =
+        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
+    final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
+    final dayFontSize = (cellWidth * 0.28).clamp(12.0, 15.0);
+
+    final dayLabels = <int, String>{
+      1: loc.t('一', 'Mon'),
+      2: loc.t('二', 'Tue'),
+      3: loc.t('三', 'Wed'),
+      4: loc.t('四', 'Thu'),
+      5: loc.t('五', 'Fri'),
+      6: loc.t('六', 'Sat'),
+      7: loc.t('日', 'Sun'),
+    };
+
+    return Row(
+      children: List.generate(visibleDays.length, (i) {
+        final date = startOfTargetWeek.add(Duration(days: i));
+        final isToday = now.year == date.year &&
+            now.month == date.month &&
+            now.day == date.day;
+        final label = dayLabels[visibleDays[i]] ?? '';
+
+        return SizedBox(
+          width: cellWidth,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: BoxDecoration(
+              color: isToday ? cs.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: labelFontSize,
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                    color: isToday ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${date.day}',
+                  style: TextStyle(
+                    fontSize: dayFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: isToday ? cs.onPrimary : cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildTimeColumn() {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 40,
+      child: Column(
+        children: _periods.take(_maxVisiblePeriod).map((p) {
+          return SizedBox(
+            height: 60, // Height per period
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('${p.period}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: cs.onSurface)),
+                Text(p.start,
+                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+                Text(p.end,
+                    style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildGridStack({
+    Key? key,
+    required int targetWeek,
+    required List<int> visibleDays,
+    required double cellWidth,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    const double cellHeight = 60;
+
+    // Use a ValueKey for the stack that doesn't change on data refresh to avoid rebuild blinks
+    // But we still want to filter items for the correct week
+    final weekItems =
+        _items.where((e) => e.isWeekIncluded(targetWeek)).toList();
+
+    return SizedBox(
+      key: key,
+      width: cellWidth * visibleDays.length,
+      height: _maxVisiblePeriod * cellHeight,
+      child: Stack(
+        children: [
+          ...List.generate(visibleDays.length, (i) {
+            return Positioned(
+              left: i * cellWidth,
+              top: 0,
+              bottom: 0,
+              width: cellWidth,
+              child: Container(
+                color: cs.primary.withValues(alpha: 0.05),
+              ),
+            );
+          }),
+          ...List.generate(visibleDays.length, (i) {
+            return Positioned(
+              left: i * cellWidth,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
+            );
+          }),
+          ...List.generate(_maxVisiblePeriod, (i) {
+            return Positioned(
+              left: 0,
+              right: 0,
+              top: i * cellHeight,
+              height: 1,
+              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
+            );
+          }),
+          ...weekItems.map((item) {
+            final course = _courses[item.courseId];
+            if (course == null) return const SizedBox.shrink();
+
+            final weekdayIndex = visibleDays.indexOf(item.weekday);
+            if (weekdayIndex < 0) return const SizedBox.shrink();
+            if (item.startPeriod > _maxVisiblePeriod) {
+              return const SizedBox.shrink();
+            }
+            final startPeriodIndex = item.startPeriod - 1;
+            final effectiveEndPeriod =
+                item.endPeriod.clamp(1, _maxVisiblePeriod);
+            final periodSpan = effectiveEndPeriod - item.startPeriod + 1;
+            if (periodSpan <= 0) return const SizedBox.shrink();
+
+            // Ignore explicitColor locally to force new expressiveColors theme, since user complained about old colors being stuck.
+            // (If user manually sets color via UI later, it will still save to CSV, but we override it here for now to ensure the new palette is seen).
+            final baseCardColor = _courseColors[item.courseId] ??
+                _expressiveColors[
+                    item.courseId.hashCode.abs() % _expressiveColors.length];
+            final cardColor = baseCardColor;
+            const cardRadius = 12.0;
+
+            return Positioned(
+              left: weekdayIndex * cellWidth,
+              top: startPeriodIndex * cellHeight,
+              width: cellWidth,
+              height: periodSpan * cellHeight,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: _TimetableCourseBlock(
+                  key: ValueKey(item.id),
+                  onTapDown: (details) {
+                    final enableQuickRollCall =
+                        Provider.of<LocaleProvider>(context, listen: false)
+                            .enableQuickRollCall;
+                    if (widget.session.canTakeAttendance &&
+                        enableQuickRollCall) {
+                      _showCourseQuickMenu(
+                        details: details,
+                        item: item,
+                        course: course,
+                      );
+                    } else {
+                      _editCell(
+                        initialWeekday: item.weekday,
+                        initialPeriod: item.startPeriod,
+                      );
+                    }
+                  },
+                  onTap: () {},
+                  onLongPress: () => _showTimetableItemActions(item),
+                  color: cardColor,
+                  radius: cardRadius,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          course.courseName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black.withValues(alpha: 220),
+                            height: 1.5,
+                          ),
+                          maxLines: 4,
+                          overflow: TextOverflow.fade,
+                        ),
+                        const Spacer(),
+                        if (item.location.isNotEmpty)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 10,
+                                color: Colors.black.withValues(alpha: 150),
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  item.location,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.black.withValues(alpha: 150),
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.15,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (item.weeks.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                item.weeks,
+                                style: TextStyle(
+                                    fontSize: 8,
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCourseQuickMenu({
+    required TapDownDetails details,
+    required TimetableItem item,
+    required Course course,
+  }) async {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final pos = details.globalPosition;
+    final r = RelativeRect.fromRect(
+      Rect.fromLTWH(pos.dx, pos.dy, 0, 0),
+      Offset.zero & overlay.size,
+    );
+    final selected = await showMenu<String>(
+      context: context,
+      position: r,
+      items: [
+        PopupMenuItem(
+          value: 'edit',
+          child: Text(loc.t('修改课表', 'Edit Timetable')),
+        ),
+        PopupMenuItem(
+          value: 'roll',
+          child: Text(loc.t('点名', 'Roll Call')),
+        ),
+      ],
+    );
+    if (!mounted) return;
+    if (selected == 'edit') {
+      _editCell(
+        initialWeekday: item.weekday,
+        initialPeriod: item.startPeriod,
+      );
+    }
+    if (selected == 'roll') {
+      _pushAttendanceAnimated(
+        courseId: item.courseId,
+        courseName: course.courseName,
+      );
+    }
+  }
+
+  void _pushAttendanceAnimated({String? courseId, String? courseName}) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return AttendancePage(
+            session: widget.session,
+            courseId: courseId,
+            courseName: courseName,
+            isStandalone: true,
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(0.0, 1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeOutCubic;
+          final tween =
+              Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          final offsetAnimation = animation.drive(tween);
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: FadeTransition(
+              opacity: animation,
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
+  }
+}
+
+class _TimetableWeekView extends StatefulWidget {
+  final int week;
+  final String viewingProfileId;
+  final bool showWeekend;
+  final List<TimetableItem> items;
+  final Map<String, Course> courses;
+  final Map<String, Color> courseColors;
+  final Function({int? initialWeekday, int? initialPeriod}) onEditCell;
+  final Function(TimetableItem) onShowActions;
+  final Function({
+    required TapDownDetails details,
+    required TimetableItem item,
+    required Course course,
+  }) onShowQuickMenu;
+  final bool isTeacher;
+  final bool canTakeAttendance;
+
+  const _TimetableWeekView({
+    required this.week,
+    required this.viewingProfileId,
+    required this.showWeekend,
+    required this.items,
+    required this.courses,
+    required this.courseColors,
+    required this.onEditCell,
+    required this.onShowActions,
+    required this.onShowQuickMenu,
+    required this.isTeacher,
+    required this.canTakeAttendance,
+  });
+
+  @override
+  State<_TimetableWeekView> createState() => _TimetableWeekViewState();
+}
+
+class _TimetableWeekViewState extends State<_TimetableWeekView> {
+  final ScrollController _gridScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _gridScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleDays = widget.showWeekend
+        ? const [1, 2, 3, 4, 5, 6, 7]
+        : const [1, 2, 3, 4, 5];
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isAndroid = Platform.isAndroid;
+    final scrollPhysics = isAndroid
+        ? const ClampingScrollPhysics()
+        : const BouncingScrollPhysics();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gridWidth =
+            (constraints.maxWidth - 40).clamp(0.0, double.infinity);
+        final cellWidth = gridWidth / visibleDays.length;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: 64,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 40,
+                    child: _buildMonthHeader(context, widget.week),
+                  ),
+                  Expanded(
+                    child: SizedBox(
+                      width: gridWidth,
+                      child: _buildWeekdayHeader(
+                          context, widget.week, visibleDays, cellWidth),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Scrollbar(
+                controller: _gridScrollController,
+                thumbVisibility: isDesktop,
+                child: SingleChildScrollView(
+                  controller: _gridScrollController,
+                  physics: scrollPhysics,
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).padding.bottom + 12,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(width: 40, child: _TimeColumn()),
+                      Expanded(
+                        child: SizedBox(
+                          width: gridWidth,
+                          child: _GridStack(
+                            key: ValueKey(
+                                '${widget.viewingProfileId}-${widget.week}'),
+                            targetWeek: widget.week,
+                            visibleDays: visibleDays,
+                            cellWidth: cellWidth,
+                            items: widget.items,
+                            courses: widget.courses,
+                            courseColors: widget.courseColors,
+                            onEditCell: widget.onEditCell,
+                            onShowActions: widget.onShowActions,
+                            onShowQuickMenu: widget.onShowQuickMenu,
+                            isTeacher: widget.isTeacher,
+                            canTakeAttendance: widget.canTakeAttendance,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMonthHeader(BuildContext context, int targetWeek) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final startOfTargetWeek =
+        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
+    final targetMonth = startOfTargetWeek.month;
+
+    return SizedBox(
+      height: 64,
+      child: Center(
+        child: Text(
+          loc.locale.languageCode == 'en'
+              ? [
+                  'Jan',
+                  'Feb',
+                  'Mar',
+                  'Apr',
+                  'May',
+                  'Jun',
+                  'Jul',
+                  'Aug',
+                  'Sep',
+                  'Oct',
+                  'Nov',
+                  'Dec'
+                ][targetMonth - 1]
+              : '$targetMonth\n月',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: cs.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekdayHeader(
+    BuildContext context,
+    int targetWeek,
+    List<int> visibleDays,
+    double cellWidth,
+  ) {
+    final loc = Provider.of<LocaleProvider>(context);
+    final cs = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final firstWeekStart = DateTime(now.year, 3, 9);
+    final startOfTargetWeek =
+        firstWeekStart.add(Duration(days: (targetWeek - 1) * 7));
+    final labelFontSize = (cellWidth * 0.22).clamp(10.0, 12.0);
+    final dayFontSize = (cellWidth * 0.28).clamp(12.0, 15.0);
+
+    final dayLabels = <int, String>{
+      1: loc.t('一', 'Mon'),
+      2: loc.t('二', 'Tue'),
+      3: loc.t('三', 'Wed'),
+      4: loc.t('四', 'Thu'),
+      5: loc.t('五', 'Fri'),
+      6: loc.t('六', 'Sat'),
+      7: loc.t('日', 'Sun'),
+    };
+
+    return Row(
+      children: List.generate(visibleDays.length, (i) {
+        final date = startOfTargetWeek.add(Duration(days: i));
+        final isToday = now.year == date.year &&
+            now.month == date.month &&
+            now.day == date.day;
+        final label = dayLabels[visibleDays[i]] ?? '';
+
+        return SizedBox(
+          width: cellWidth,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: BoxDecoration(
+              color: isToday ? cs.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: labelFontSize,
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                    color: isToday ? cs.onPrimary : cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${date.day}',
+                  style: TextStyle(
+                    fontSize: dayFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: isToday ? cs.onPrimary : cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _TimeColumn extends StatelessWidget {
+  const _TimeColumn();
+
+  static const _periods = <({int period, String start, String end})>[
+    (period: 1, start: '08:00', end: '08:45'),
+    (period: 2, start: '08:55', end: '09:40'),
+    (period: 3, start: '10:10', end: '10:55'),
+    (period: 4, start: '11:05', end: '11:50'),
+    (period: 5, start: '14:30', end: '15:15'),
+    (period: 6, start: '15:25', end: '16:10'),
+    (period: 7, start: '16:40', end: '17:25'),
+    (period: 8, start: '17:35', end: '18:20'),
+    (period: 9, start: '19:00', end: '19:45'),
+    (period: 10, start: '19:55', end: '20:30'),
+    (period: 11, start: '20:40', end: '21:25'),
+    (period: 12, start: '21:35', end: '22:20'),
+  ];
+  static const int _maxVisiblePeriod = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: _periods.take(_maxVisiblePeriod).map((p) {
+        return SizedBox(
+          height: 60,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('${p.period}',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: cs.onSurface)),
+              Text(p.start,
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+              Text(p.end,
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _GridStack extends StatelessWidget {
+  final int targetWeek;
+  final List<int> visibleDays;
+  final double cellWidth;
+  final List<TimetableItem> items;
+  final Map<String, Course> courses;
+  final Map<String, Color> courseColors;
+  final Function({int? initialWeekday, int? initialPeriod}) onEditCell;
+  final Function(TimetableItem) onShowActions;
+  final Function({
+    required TapDownDetails details,
+    required TimetableItem item,
+    required Course course,
+  }) onShowQuickMenu;
+  final bool isTeacher;
+  final bool canTakeAttendance;
+
+  const _GridStack({
+    super.key,
+    required this.targetWeek,
+    required this.visibleDays,
+    required this.cellWidth,
+    required this.items,
+    required this.courses,
+    required this.courseColors,
+    required this.onEditCell,
+    required this.onShowActions,
+    required this.onShowQuickMenu,
+    required this.isTeacher,
+    required this.canTakeAttendance,
+  });
+
+  static const int _maxVisiblePeriod = 10;
+  static const _expressiveColors = <Color>[
+    Color(0xFFE8F5E9),
+    Color(0xFFFFF3E0),
+    Color(0xFFFCE4EC),
+    Color(0xFFF3E5F5),
+    Color(0xFFE0F7FA),
+    Color(0xFFFFFDE7),
+    Color(0xFFE8EAF6),
+    Color(0xFFFBE9E7),
+    Color(0xFFEFEBE9),
+    Color(0xFFF1F8E9),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const double cellHeight = 60;
+    final weekItems = items.where((e) => e.isWeekIncluded(targetWeek)).toList();
+
+    return SizedBox(
+      width: cellWidth * visibleDays.length,
+      height: _maxVisiblePeriod * cellHeight,
+      child: Stack(
+        children: [
+          ...List.generate(visibleDays.length, (i) {
+            return Positioned(
+              left: i * cellWidth,
+              top: 0,
+              bottom: 0,
+              width: cellWidth,
+              child: Container(color: cs.primary.withValues(alpha: 0.05)),
+            );
+          }),
+          ...List.generate(visibleDays.length, (i) {
+            return Positioned(
+              left: i * cellWidth,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
+            );
+          }),
+          ...List.generate(_maxVisiblePeriod, (i) {
+            return Positioned(
+              left: 0,
+              right: 0,
+              top: i * cellHeight,
+              height: 1,
+              child: Container(color: Colors.grey.withValues(alpha: 0.1)),
+            );
+          }),
+          ...weekItems.map((item) {
+            final course = courses[item.courseId];
+            if (course == null) return const SizedBox.shrink();
+
+            final weekdayIndex = visibleDays.indexOf(item.weekday);
+            if (weekdayIndex < 0) return const SizedBox.shrink();
+            if (item.startPeriod > _maxVisiblePeriod) {
+              return const SizedBox.shrink();
+            }
+
+            final startPeriodIndex = item.startPeriod - 1;
+            final effectiveEndPeriod =
+                item.endPeriod.clamp(1, _maxVisiblePeriod);
+            final periodSpan = effectiveEndPeriod - item.startPeriod + 1;
+            if (periodSpan <= 0) return const SizedBox.shrink();
+
+            final cardColor = courseColors[item.courseId] ??
+                _expressiveColors[
+                    item.hashCode.abs() % _expressiveColors.length];
+
+            return Positioned(
+              left: weekdayIndex * cellWidth,
+              top: startPeriodIndex * cellHeight,
+              width: cellWidth,
+              height: periodSpan * cellHeight,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: _TimetableCourseBlock(
+                  key: ValueKey(item.id),
+                  onTapDown: (details) {
+                    final enableQuickRollCall =
+                        Provider.of<LocaleProvider>(context, listen: false)
+                            .enableQuickRollCall;
+                    if (canTakeAttendance && enableQuickRollCall) {
+                      onShowQuickMenu(
+                          details: details, item: item, course: course);
+                    } else {
+                      onEditCell(
+                          initialWeekday: item.weekday,
+                          initialPeriod: item.startPeriod);
+                    }
+                  },
+                  onTap: () {},
+                  onLongPress: () => onShowActions(item),
+                  color: cardColor,
+                  radius: 12.0,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          course.courseName,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black.withValues(alpha: 220),
+                            height: 1.5,
+                          ),
+                          maxLines: 4,
+                          overflow: TextOverflow.fade,
+                        ),
+                        const Spacer(),
+                        if (item.location.isNotEmpty)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.location_on_outlined,
+                                  size: 10,
+                                  color: Colors.black.withValues(alpha: 150)),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                child: Text(
+                                  item.location,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.black.withValues(alpha: 150),
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.15,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (item.weeks.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                item.weeks,
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  color: Colors.black.withValues(alpha: 120),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimetableCourseBlock extends StatelessWidget {
+  final VoidCallback onTap;
+  final GestureTapDownCallback? onTapDown;
+  final VoidCallback onLongPress;
+  final Color color;
+  final double radius;
+  final Widget child;
+
+  const _TimetableCourseBlock({
+    super.key,
+    required this.onTap,
+    this.onTapDown,
+    required this.onLongPress,
+    required this.color,
+    required this.radius,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Bounceable(
+      onTap: onTap,
+      onTapDown: onTapDown,
+      onLongPress: onLongPress,
+      behavior: HitTestBehavior.deferToChild,
+      child: Material(
+        elevation: 0,
+        color: color,
+        borderRadius: BorderRadius.circular(radius),
+        child: child,
+      ),
+    );
+  }
+}
