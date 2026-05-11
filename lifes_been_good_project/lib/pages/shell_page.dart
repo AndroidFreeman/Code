@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../main.dart';
 import '../state/session.dart';
 import '../services/native_features.dart';
+import '../services/api_config.dart';
 import '../widgets/home_drawer.dart';
 import '../widgets/expressive_ui.dart';
 import 'attendance_page.dart';
@@ -14,8 +17,14 @@ import 'todos_page.dart';
 import 'timetable_page.dart';
 import 'class_students_page.dart';
 import 'class_attendance_overview_page.dart';
+import 'login_page.dart';
+import 'qrcode_page.dart';
+import 'weblinks_page.dart';
+import 'notifications_page.dart';
+import 'schedule_page.dart';
 
 import 'profile_page.dart';
+import '../services/silent_sync.dart';
 
 class ShellPage extends StatefulWidget {
   final Session session;
@@ -31,8 +40,10 @@ class _ShellPageState extends State<ShellPage> {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final isDesktop = width >= 1024;
-    return isDesktop
+    final shortestSide = MediaQuery.of(context).size.shortestSide;
+    final useDesktopFlow =
+        width >= 1024 || (Platform.isAndroid && shortestSide >= 600);
+    return useDesktopFlow
         ? _DesktopShell(session: widget.session, onLogout: widget.onLogout)
         : _MobileShell(session: widget.session, onLogout: widget.onLogout);
   }
@@ -56,6 +67,7 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
   late AnimationController _controller;
   late int _currentIndex;
   int? _previousIndex;
+  int _direction = 1;
 
   @override
   void initState() {
@@ -63,7 +75,7 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
     _currentIndex = widget.index;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 250),
+      duration: kAppRouteTransitionDuration,
     );
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -80,6 +92,7 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
     super.didUpdateWidget(oldWidget);
     if (widget.index != _currentIndex) {
       setState(() {
+        _direction = widget.index >= _currentIndex ? 1 : -1;
         _previousIndex = _currentIndex;
         _currentIndex = widget.index;
       });
@@ -107,17 +120,22 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
           return const SizedBox.shrink();
         }
 
-        return FadeTransition(
-          opacity: isCurrent
-              ? _controller.drive(CurveTween(curve: Curves.easeOut))
-              : _controller.drive(Tween<double>(begin: 1.0, end: 0.0)
-                  .chain(CurveTween(curve: Curves.easeIn))),
+        final incoming = Tween<Offset>(
+          begin: Offset(_direction.toDouble(), 0),
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(parent: _controller, curve: kAppMotionCurve),
+        );
+        final outgoing = Tween<Offset>(
+          begin: Offset.zero,
+          end: Offset(-_direction.toDouble(), 0),
+        ).animate(
+          CurvedAnimation(parent: _controller, curve: kAppMotionCurve),
+        );
+
+        return ClipRect(
           child: SlideTransition(
-            position: isCurrent
-                ? _controller.drive(Tween<Offset>(
-                        begin: const Offset(0, 0.02), end: Offset.zero)
-                    .chain(CurveTween(curve: Curves.easeOutCubic)))
-                : const AlwaysStoppedAnimation(Offset.zero),
+            position: isCurrent ? incoming : outgoing,
             child: IgnorePointer(
               ignoring: !isCurrent,
               child: child,
@@ -125,6 +143,250 @@ class _FadeIndexedStackState extends State<_FadeIndexedStack>
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+class _AppScrollBehavior extends MaterialScrollBehavior {
+  const _AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => const {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.unknown,
+      };
+}
+
+class _PagedShellViewport extends StatefulWidget {
+  final Axis scrollDirection;
+  final List<String> pageIds;
+  final int activeIndex;
+  final Widget Function(BuildContext context, int index) pageBuilder;
+  final ValueChanged<String> onPageChanged;
+
+  const _PagedShellViewport({
+    required this.scrollDirection,
+    required this.pageIds,
+    required this.activeIndex,
+    required this.pageBuilder,
+    required this.onPageChanged,
+  });
+
+  @override
+  State<_PagedShellViewport> createState() => _PagedShellViewportState();
+}
+
+class _PagedShellViewportState extends State<_PagedShellViewport>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  DateTime? _lastWheelAt;
+  int _currentIndex = 0;
+  int? _previousIndex;
+  int? _targetIndex;
+  int? _queuedTargetIndex;
+
+  bool get _isAnimating => _targetIndex != null;
+
+  int _normalizedIndex(int index) {
+    if (widget.pageIds.isEmpty) return 0;
+    return index.clamp(0, widget.pageIds.length - 1);
+  }
+
+  Offset _beginOffset(int direction) {
+    if (widget.scrollDirection == Axis.vertical) {
+      return Offset(0, direction.toDouble());
+    }
+    return Offset(direction.toDouble(), 0);
+  }
+
+  Future<void> _startTransition(int targetIndex) async {
+    if (!mounted || widget.pageIds.isEmpty) return;
+    targetIndex = _normalizedIndex(targetIndex);
+    if (_isAnimating) {
+      if (targetIndex != _targetIndex) {
+        _queuedTargetIndex = targetIndex;
+      }
+      return;
+    }
+    if (targetIndex == _currentIndex) return;
+
+    final duration = const Duration(milliseconds: 300);
+
+    setState(() {
+      _previousIndex = _currentIndex;
+      _currentIndex = targetIndex;
+      _targetIndex = targetIndex;
+      _queuedTargetIndex = null;
+      _controller.duration = duration;
+    });
+
+    // Notify parent immediately to sync highlight for the intermediate page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onPageChanged(widget.pageIds[targetIndex]);
+      }
+    });
+
+    await _controller.forward(from: 0.0);
+    if (!mounted) return;
+    final queuedTargetIndex = _queuedTargetIndex;
+    setState(() {
+      _previousIndex = null;
+      _targetIndex = null;
+    });
+
+    if (queuedTargetIndex != null && queuedTargetIndex != _currentIndex) {
+      // Continue to the next step
+      Future.microtask(() {
+        if (mounted) {
+          unawaited(_startTransition(queuedTargetIndex));
+        }
+      });
+    }
+  }
+
+  Future<void> _handlePointerSignal(PointerSignalEvent signal) async {
+    if (signal is! PointerScrollEvent || widget.pageIds.length <= 1) return;
+    final delta = widget.scrollDirection == Axis.vertical
+        ? signal.scrollDelta.dy
+        : (signal.scrollDelta.dx.abs() > signal.scrollDelta.dy.abs()
+            ? signal.scrollDelta.dx
+            : signal.scrollDelta.dy);
+    if (delta.abs() < 8) return;
+
+    final now = DateTime.now();
+    if (_lastWheelAt != null &&
+        now.difference(_lastWheelAt!) < const Duration(milliseconds: 120)) {
+      return;
+    }
+    _lastWheelAt = now;
+    final nextIndex = (_currentIndex + (delta > 0 ? 1 : -1))
+        .clamp(0, widget.pageIds.length - 1);
+    if (nextIndex == _currentIndex) return;
+    await _startTransition(nextIndex);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = _normalizedIndex(widget.activeIndex);
+    _controller = AnimationController(
+      vsync: this,
+      duration: kAppRouteTransitionDuration,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _PagedShellViewport oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final normalizedActive = _normalizedIndex(widget.activeIndex);
+    if (_isAnimating) {
+      if (normalizedActive != _targetIndex) {
+        _queuedTargetIndex = normalizedActive;
+      }
+      return;
+    }
+    if (normalizedActive != _currentIndex) {
+      unawaited(_startTransition(normalizedActive));
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.pageIds.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final previousIndex = _previousIndex;
+    final targetIndex = _targetIndex;
+    final direction = targetIndex == null
+        ? 1
+        : (targetIndex >= (previousIndex ?? _currentIndex) ? 1 : -1);
+    final forward =
+        CurvedAnimation(parent: _controller, curve: kAppMotionCurve);
+    final incoming = Tween<Offset>(
+      begin: _beginOffset(direction),
+      end: Offset.zero,
+    ).animate(forward);
+    final outgoing = Tween<Offset>(
+      begin: Offset.zero,
+      end: _beginOffset(-direction),
+    ).animate(forward);
+
+    return ScrollConfiguration(
+      behavior: const _AppScrollBehavior(),
+      child: Listener(
+        onPointerSignal: _handlePointerSignal,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragEnd: widget.scrollDirection == Axis.horizontal
+              ? (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity.abs() < 180 || _isAnimating) return;
+                  final nextIndex = (_currentIndex + (velocity < 0 ? 1 : -1))
+                      .clamp(0, widget.pageIds.length - 1);
+                  if (nextIndex == _currentIndex) return;
+                  unawaited(_startTransition(nextIndex));
+                }
+              : null,
+          onVerticalDragEnd: widget.scrollDirection == Axis.vertical
+              ? (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity.abs() < 180 || _isAnimating) return;
+                  final nextIndex = (_currentIndex + (velocity < 0 ? 1 : -1))
+                      .clamp(0, widget.pageIds.length - 1);
+                  if (nextIndex == _currentIndex) return;
+                  unawaited(_startTransition(nextIndex));
+                }
+              : null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: List<Widget>.generate(widget.pageIds.length, (index) {
+              final pageId = widget.pageIds[index];
+              final page = RepaintBoundary(
+                key: PageStorageKey<String>('shell_$pageId'),
+                child: widget.pageBuilder(context, index),
+              );
+              final isCurrent = index == _currentIndex;
+              final isPrevious =
+                  previousIndex != null && index == previousIndex;
+              final isVisible = isCurrent || isPrevious;
+
+              final position = !isVisible
+                  ? const AlwaysStoppedAnimation(Offset.zero)
+                  : (isPrevious && targetIndex != null)
+                      ? outgoing
+                      : (isPrevious
+                          ? const AlwaysStoppedAnimation(Offset.zero)
+                          : (previousIndex != null
+                              ? incoming
+                              : const AlwaysStoppedAnimation(Offset.zero)));
+
+              return Offstage(
+                offstage: !isVisible,
+                child: TickerMode(
+                  enabled: isVisible,
+                  child: SlideTransition(
+                    position: position,
+                    child: IgnorePointer(
+                      ignoring: !isCurrent,
+                      child: page,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -141,13 +403,32 @@ class _DesktopShell extends StatefulWidget {
 
 class _DesktopShellState extends State<_DesktopShell> {
   bool _isExtended = true;
-  String _targetPageId = 'timetable';
-  String _visiblePageId = 'timetable';
-  final Set<String> _mountedPageIds = {'timetable'};
-  final Set<String> _readyPageIds = {};
+  String _currentPageId = 'timetable';
+  String? _targetPageId;
   final Map<String, Widget> _pageCache = {};
   final TimetableController _timetableController = TimetableController();
+  final Set<String> _readyPageIds = {};
   LocaleProvider? _localeProvider;
+
+  String? _resolveAvatarUrlOrPath(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return null;
+    if (v.startsWith('data:image')) return v;
+    final uri = Uri.tryParse(v);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      return v;
+    }
+    if (uri != null && uri.scheme == 'file') {
+      return uri.toFilePath();
+    }
+    if (v.contains(':\\') || v.startsWith('/')) return v;
+    return '${widget.session.dataDir}/$v';
+  }
+
+  DecorationImage? _getAvatarImage(String path) {
+    final resolved = _resolveAvatarUrlOrPath(path) ?? '';
+    return AvatarImageProvider.getDecorationImage(resolved);
+  }
 
   void _onPageReady(String id) {
     if (!mounted) return;
@@ -161,10 +442,9 @@ class _DesktopShellState extends State<_DesktopShell> {
   }
 
   void _changePage(String id) {
+    if (id == _currentPageId && _targetPageId == null) return;
     setState(() {
       _targetPageId = id;
-      _visiblePageId = id;
-      _mountedPageIds.add(id);
     });
   }
 
@@ -174,6 +454,11 @@ class _DesktopShellState extends State<_DesktopShell> {
     widget.session.addListener(_onSessionChanged);
     _localeProvider = Provider.of<LocaleProvider>(context, listen: false);
     _localeProvider?.addListener(_onLocaleChanged);
+
+    // Start background sync
+    IncrementalSync.startSync(context, () {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -204,6 +489,8 @@ class _DesktopShellState extends State<_DesktopShell> {
           onLogout: widget.onLogout,
           controller: _timetableController,
           onReady: () => _onPageReady(id)),
+      'schedule' =>
+        SchedulePage(session: widget.session, onReady: () => _onPageReady(id)),
       'todo' =>
         TodosPage(session: widget.session, onReady: () => _onPageReady(id)),
       'contact' =>
@@ -214,6 +501,9 @@ class _DesktopShellState extends State<_DesktopShell> {
           session: widget.session, onReady: () => _onPageReady(id)),
       'class_attendance' => ClassAttendanceOverviewPage(
           session: widget.session, onReady: () => _onPageReady(id)),
+      'qrcode' => QrCodePage(session: widget.session),
+      'weblinks' => WeblinksPage(session: widget.session),
+      'notifications' => NotificationsPage(session: widget.session),
       _ => TimetablePage(
           session: widget.session,
           onLogout: widget.onLogout,
@@ -222,6 +512,67 @@ class _DesktopShellState extends State<_DesktopShell> {
     };
     _pageCache[id] = w;
     return w;
+  }
+
+  List<({String id, String label, IconData icon})> _availablePageOptions(
+      LocaleProvider loc) {
+    final out = <({String id, String label, IconData icon})>[
+      (
+        id: 'timetable',
+        label: loc.t('周课表', 'Timetable'),
+        icon: Icons.calendar_month
+      ),
+      (id: 'schedule', label: loc.t('日程表', 'Schedule'), icon: Icons.schedule),
+      (
+        id: 'todo',
+        label: loc.t('待办', 'Todos'),
+        icon: Icons.checklist_rtl_rounded
+      ),
+      (
+        id: 'contact',
+        label: loc.t('通讯录', 'Contacts'),
+        icon: Icons.contact_page_rounded
+      ),
+      (
+        id: 'qrcode',
+        label: loc.t('二维码', 'QR Code'),
+        icon: Icons.qr_code_2_rounded
+      ),
+      (
+        id: 'weblinks',
+        label: loc.t('常用网站', 'Web Links'),
+        icon: Icons.language_rounded
+      ),
+      (
+        id: 'notifications',
+        label: loc.t('通知', 'Notifications'),
+        icon: Icons.notifications_rounded
+      ),
+    ];
+    if (widget.session.canTakeAttendance) {
+      out.add((
+        id: 'attendance',
+        label: loc.t('点名', 'Roll Call'),
+        icon: Icons.emoji_people_rounded
+      ));
+    }
+
+    if (widget.session.canViewStudents) {
+      out.add(
+          (id: 'students', label: loc.t('学生', 'Students'), icon: Icons.people));
+      out.add((
+        id: 'class_attendance',
+        label: loc.t('考勤', 'Attendance'),
+        icon: Icons.assessment
+      ));
+    }
+    return out;
+  }
+
+  List<({String id, String label, IconData icon})>
+      _availablePageOptionsNoLoc() {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    return _availablePageOptions(loc);
   }
 
   List<({NavigationRailDestination destination, String id})> _items(
@@ -234,6 +585,14 @@ class _DesktopShellState extends State<_DesktopShell> {
           label: Text(loc.t('周课表', 'Timetable')),
         ),
         id: 'timetable',
+      ),
+      (
+        destination: NavigationRailDestination(
+          icon: const Icon(Icons.schedule_outlined),
+          selectedIcon: const Icon(Icons.schedule),
+          label: Text(loc.t('日程表', 'Schedule')),
+        ),
+        id: 'schedule',
       ),
       (
         destination: NavigationRailDestination(
@@ -250,6 +609,30 @@ class _DesktopShellState extends State<_DesktopShell> {
           label: Text(loc.t('通讯录', 'Contacts')),
         ),
         id: 'contact',
+      ),
+      (
+        destination: NavigationRailDestination(
+          icon: const Icon(Icons.qr_code_2_outlined),
+          selectedIcon: const Icon(Icons.qr_code_2_rounded),
+          label: Text(loc.t('二维码', 'QR Code')),
+        ),
+        id: 'qrcode',
+      ),
+      (
+        destination: NavigationRailDestination(
+          icon: const Icon(Icons.language_outlined),
+          selectedIcon: const Icon(Icons.language_rounded),
+          label: Text(loc.t('常用网站', 'Web Links')),
+        ),
+        id: 'weblinks',
+      ),
+      (
+        destination: NavigationRailDestination(
+          icon: const Icon(Icons.notifications_outlined),
+          selectedIcon: const Icon(Icons.notifications_rounded),
+          label: Text(loc.t('通知', 'Notifications')),
+        ),
+        id: 'notifications',
       ),
     ];
 
@@ -295,31 +678,23 @@ class _DesktopShellState extends State<_DesktopShell> {
     final loc = Provider.of<LocaleProvider>(context);
     final items = _items(loc);
     final pageIds = items.map((e) => e.id).toList();
-
-    if (!pageIds.contains(_targetPageId) && pageIds.isNotEmpty) {
-      _targetPageId = pageIds.first;
-      _visiblePageId = pageIds.first;
-    }
-
-    _mountedPageIds.add(_targetPageId);
-    final pages = pageIds
-        .map((id) => _mountedPageIds.contains(id)
-            ? _getPage(id)
-            : const SizedBox.shrink())
-        .toList(growable: false);
-    final activeIdx = pageIds.indexOf(_visiblePageId);
-    final actualActiveIdx = activeIdx >= 0 ? activeIdx : 0;
+    final selectedPageId = pageIds.contains(_targetPageId)
+        ? _targetPageId!
+        : (pageIds.contains(_currentPageId) ? _currentPageId : pageIds.first);
+    final actualActiveIdx = pageIds.isEmpty
+        ? 0
+        : pageIds.indexOf(selectedPageId).clamp(0, pageIds.length - 1);
 
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: cs.surface,
       body: Row(
         children: [
           // Custom Desktop Sidebar
           AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
+            duration: kAppRouteTransitionDuration,
             curve: Curves.easeInOutCubic,
             width: _isExtended ? 240 : 80,
             decoration: const BoxDecoration(
@@ -332,41 +707,78 @@ class _DesktopShellState extends State<_DesktopShell> {
                 children: [
                   const SizedBox(height: 16),
                   // Toggle Button & Logo
-                  Padding(
+                  Container(
+                    height: 56,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (_isExtended)
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Image.asset(
-                                      'assets/images/logo.png',
-                                      width: 24,
-                                      height: 24,
-                                      fit: BoxFit.cover,
+                        Flexible(
+                          child: AnimatedContainer(
+                            duration: kAppRouteTransitionDuration,
+                            curve: Curves.easeInOutCubic,
+                            width: _isExtended ? 160 : 0,
+                            child: ClipRect(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: AnimatedOpacity(
+                                  duration: const Duration(milliseconds: 200),
+                                  opacity: _isExtended ? 1.0 : 0.0,
+                                  child: OverflowBox(
+                                    maxWidth: double.infinity,
+                                    alignment: Alignment.centerLeft,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          child: Image.asset(
+                                            'assets/images/logo.png',
+                                            width: 24,
+                                            height: 24,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text('LBG System',
+                                            style: tt.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.bold)),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(loc.t('更多工具', 'More Tools'),
-                                      style: tt.titleMedium?.copyWith(
-                                          fontWeight: FontWeight.bold)),
-                                ],
+                                ),
                               ),
                             ),
                           ),
-                        IconButton(
-                          icon:
-                              Icon(_isExtended ? Icons.menu_open : Icons.menu),
-                          onPressed: () =>
-                              setState(() => _isExtended = !_isExtended),
                         ),
+                        if (!_isExtended)
+                          InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () =>
+                                setState(() => _isExtended = !_isExtended),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                width: 24,
+                                height: 24,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          )
+                        else
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            transformAlignment: Alignment.center,
+                            transform:
+                                Matrix4.rotationZ(_isExtended ? 0 : 3.1415926),
+                            child: IconButton(
+                              icon: const Icon(Icons.menu_open),
+                              onPressed: () =>
+                                  setState(() => _isExtended = !_isExtended),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -377,13 +789,14 @@ class _DesktopShellState extends State<_DesktopShell> {
                     child: Bounceable(
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  ProfilePage(session: widget.session)),
+                          AppSlidePageRoute(
+                            builder: (_) =>
+                                ProfilePage(session: widget.session),
+                          ),
                         );
                       },
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
+                        duration: kAppRouteTransitionDuration,
                         curve: Curves.easeInOutCubic,
                         padding: EdgeInsets.symmetric(
                             vertical: _isExtended ? 12 : 0,
@@ -412,23 +825,17 @@ class _DesktopShellState extends State<_DesktopShell> {
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                        color: cs.outlineVariant, width: 1),
-                                    image: widget.session.profile.avatar
-                                                .isNotEmpty &&
-                                            File(widget.session.profile.avatar)
-                                                .existsSync()
-                                        ? DecorationImage(
-                                            image: FileImage(File(
-                                                widget.session.profile.avatar)),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
+                                      color: Colors.grey.shade200,
+                                      width: 1,
+                                    ),
+                                    image: _getAvatarImage(
+                                      widget.session.profile.avatar,
+                                    ),
                                   ),
                                   alignment: Alignment.center,
-                                  child: (widget
-                                              .session.profile.avatar.isEmpty ||
-                                          !File(widget.session.profile.avatar)
-                                              .existsSync())
+                                  child: (_getAvatarImage(
+                                              widget.session.profile.avatar) ==
+                                          null)
                                       ? Text(
                                           widget.session.profile.displayName
                                                   .isNotEmpty
@@ -448,7 +855,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                               if (_isExtended)
                                 Flexible(
                                   child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
+                                    duration: kAppRouteTransitionDuration,
                                     curve: Curves.easeInOutCubic,
                                     width: _isExtended ? 124 : 0,
                                     child: ClipRect(
@@ -507,47 +914,34 @@ class _DesktopShellState extends State<_DesktopShell> {
                       itemCount: items.length,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       itemBuilder: (context, index) {
-                        final targetIdx = pageIds.indexOf(_targetPageId);
-                        final isSelected =
-                            (targetIdx >= 0 ? targetIdx : 0) == index;
+                        final isSelected = actualActiveIdx == index;
                         final dest = items[index].destination;
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           child: Bounceable(
                             onTap: () {
-                              _changePage(items[index].id);
+                              final id = items[index].id;
+                              _changePage(id);
                             },
                             child: Container(
                               height: 56,
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? cs.primaryContainer.withValues(alpha: 128)
+                                    ? cs.secondaryContainer
+                                        .withValues(alpha: 214)
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Row(
                                 children: [
-                                  // The Highlighting Line
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    width: 4,
-                                    height: isSelected ? 24 : 0,
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? cs.primary
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 16),
                                   Expanded(
                                     child: SingleChildScrollView(
                                       scrollDirection: Axis.horizontal,
                                       physics:
                                           const NeverScrollableScrollPhysics(),
                                       child: AnimatedAlign(
-                                        duration:
-                                            const Duration(milliseconds: 300),
+                                        duration: kAppRouteTransitionDuration,
                                         curve: Curves.easeInOutCubic,
                                         alignment: _isExtended
                                             ? Alignment.centerLeft
@@ -559,7 +953,7 @@ class _DesktopShellState extends State<_DesktopShell> {
                                               data: Theme.of(context).copyWith(
                                                 iconTheme: IconThemeData(
                                                   color: isSelected
-                                                      ? cs.primary
+                                                      ? cs.onSecondaryContainer
                                                       : cs.onSurfaceVariant,
                                                 ),
                                               ),
@@ -568,8 +962,8 @@ class _DesktopShellState extends State<_DesktopShell> {
                                                   : dest.icon,
                                             ),
                                             AnimatedContainer(
-                                              duration: const Duration(
-                                                  milliseconds: 300),
+                                              duration:
+                                                  kAppRouteTransitionDuration,
                                               curve: Curves.easeInOutCubic,
                                               width:
                                                   0, // removed width: _isExtended ? 12 : 0, as it's fixed below
@@ -577,8 +971,8 @@ class _DesktopShellState extends State<_DesktopShell> {
                                             if (_isExtended)
                                               const SizedBox(width: 12),
                                             AnimatedContainer(
-                                              duration: const Duration(
-                                                  milliseconds: 300),
+                                              duration:
+                                                  kAppRouteTransitionDuration,
                                               curve: Curves.easeInOutCubic,
                                               width: _isExtended ? 140 : 0,
                                               child: ClipRect(
@@ -595,11 +989,11 @@ class _DesktopShellState extends State<_DesktopShell> {
                                                       style: tt.titleSmall
                                                           ?.copyWith(
                                                         color: isSelected
-                                                            ? cs.primary
+                                                            ? cs.onSecondaryContainer
                                                             : cs.onSurfaceVariant,
                                                         fontWeight: isSelected
                                                             ? FontWeight.bold
-                                                            : null,
+                                                            : FontWeight.w600,
                                                       ),
                                                     ),
                                                   ),
@@ -611,6 +1005,15 @@ class _DesktopShellState extends State<_DesktopShell> {
                                       ),
                                     ),
                                   ),
+                                  if (isSelected && _isExtended)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 14),
+                                      child: Icon(
+                                        Icons.arrow_forward_ios_rounded,
+                                        size: 14,
+                                        color: cs.onSecondaryContainer,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -625,14 +1028,27 @@ class _DesktopShellState extends State<_DesktopShell> {
                     child: Bounceable(
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
+                          AppScalePageRoute(
                             builder: (_) => _NavSettingsPage(
-                              options: const [],
+                              optionsBuilder: _availablePageOptionsNoLoc,
                               initialOrder: const [],
-                              onImportWakeUp: _timetableController.importWakeUp,
+                              onImportWakeUp: () async {
+                                if (_timetableController.importWakeUp != null) {
+                                  await _timetableController.importWakeUp!();
+                                } else {
+                                  final loc = Provider.of<LocaleProvider>(
+                                      context,
+                                      listen: false);
+                                  showExpressiveSnackBar(
+                                      context,
+                                      loc.t('请先切换到课表页面',
+                                          'Please switch to Timetable page first'));
+                                }
+                              },
                               onClearTimetable:
                                   _timetableController.clearTimetable,
                               isTeacher: widget.session.isTeacher,
+                              session: widget.session,
                             ),
                           ),
                         );
@@ -653,18 +1069,18 @@ class _DesktopShellState extends State<_DesktopShell> {
                             mainAxisAlignment: MainAxisAlignment.start,
                             children: [
                               AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
+                                duration: kAppRouteTransitionDuration,
                                 curve: Curves.easeInOutCubic,
                                 width: _isExtended ? 16 : 0,
                               ),
                               Icon(Icons.settings, color: cs.onSurfaceVariant),
                               AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
+                                duration: kAppRouteTransitionDuration,
                                 curve: Curves.easeInOutCubic,
                                 width: _isExtended ? 12 : 0,
                               ),
                               AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
+                                duration: kAppRouteTransitionDuration,
                                 curve: Curves.easeInOutCubic,
                                 width: _isExtended ? 140 : 0,
                                 child: ClipRect(
@@ -710,18 +1126,18 @@ class _DesktopShellState extends State<_DesktopShell> {
                             mainAxisAlignment: MainAxisAlignment.start,
                             children: [
                               AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
+                                duration: kAppRouteTransitionDuration,
                                 curve: Curves.easeInOutCubic,
                                 width: _isExtended ? 16 : 0,
                               ),
                               Icon(Icons.logout, color: cs.error),
                               AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
+                                duration: kAppRouteTransitionDuration,
                                 curve: Curves.easeInOutCubic,
                                 width: _isExtended ? 12 : 0,
                               ),
                               AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
+                                duration: kAppRouteTransitionDuration,
                                 curve: Curves.easeInOutCubic,
                                 width: _isExtended ? 140 : 0,
                                 child: ClipRect(
@@ -751,10 +1167,19 @@ class _DesktopShellState extends State<_DesktopShell> {
           ),
           Expanded(
             child: Container(
-              color: Colors.transparent,
-              child: _FadeIndexedStack(
-                index: actualActiveIdx,
-                children: pages,
+              color: cs.surface,
+              child: _PagedShellViewport(
+                scrollDirection: Axis.vertical,
+                pageIds: pageIds,
+                activeIndex: actualActiveIdx,
+                onPageChanged: (id) {
+                  if (!mounted) return;
+                  setState(() {
+                    _currentPageId = id;
+                    _targetPageId = null;
+                  });
+                },
+                pageBuilder: (context, index) => _getPage(pageIds[index]),
               ),
             ),
           ),
@@ -775,17 +1200,14 @@ class _MobileShell extends StatefulWidget {
 }
 
 class _MobileShellState extends State<_MobileShell> {
-  String _activePageId = 'timetable';
+  String _currentPageId = 'timetable';
+  String? _targetPageId;
   List<String>? _bottomNavIds;
   bool _navPrefsLoaded = false;
   final Map<String, Widget> _pageCache = {};
   final TimetableController _timetableController = TimetableController();
-  LocaleProvider? _localeProvider;
-
-  String _targetPageId = 'timetable';
-  String _visiblePageId = 'timetable';
-  final Set<String> _mountedPageIds = {'timetable'};
   final Set<String> _readyPageIds = {};
+  LocaleProvider? _localeProvider;
   DateTime? _lastBackAt;
 
   void _onPageReady(String id) {
@@ -800,11 +1222,9 @@ class _MobileShellState extends State<_MobileShell> {
   }
 
   void _changePage(String id) {
+    if (id == _currentPageId && _targetPageId == null) return;
     setState(() {
-      _activePageId = id;
       _targetPageId = id;
-      _visiblePageId = id;
-      _mountedPageIds.add(id);
     });
   }
 
@@ -815,6 +1235,11 @@ class _MobileShellState extends State<_MobileShell> {
     _localeProvider = Provider.of<LocaleProvider>(context, listen: false);
     _localeProvider?.addListener(_onLocaleChanged);
     _loadNavPrefs();
+
+    // Start background sync
+    IncrementalSync.startSync(context, () {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -928,10 +1353,31 @@ class _MobileShellState extends State<_MobileShell> {
         label: loc.t('周课表', 'Timetable'),
         icon: Icons.calendar_month
       ),
+      (id: 'schedule', label: loc.t('日程表', 'Schedule'), icon: Icons.schedule),
+      (
+        id: 'todo',
+        label: loc.t('待办', 'Todos'),
+        icon: Icons.checklist_rtl_rounded
+      ),
       (
         id: 'contact',
         label: loc.t('通讯录', 'Contacts'),
         icon: Icons.contact_page_rounded
+      ),
+      (
+        id: 'qrcode',
+        label: loc.t('二维码', 'QR Code'),
+        icon: Icons.qr_code_2_rounded
+      ),
+      (
+        id: 'weblinks',
+        label: loc.t('常用网站', 'Web Links'),
+        icon: Icons.language_rounded
+      ),
+      (
+        id: 'notifications',
+        label: loc.t('通知', 'Notifications'),
+        icon: Icons.notifications_rounded
       ),
     ];
     if (widget.session.canTakeAttendance) {
@@ -941,12 +1387,6 @@ class _MobileShellState extends State<_MobileShell> {
         icon: Icons.emoji_people_rounded
       ));
     }
-
-    out.insert(1, (
-      id: 'todo',
-      label: loc.t('待办', 'Todos'),
-      icon: Icons.checklist_rtl_rounded
-    ));
 
     if (widget.session.canViewStudents) {
       out.add(
@@ -960,10 +1400,15 @@ class _MobileShellState extends State<_MobileShell> {
     return out;
   }
 
-  Future<void> _openNavSettings() async {
+  List<({String id, String label, IconData icon})>
+      _availablePageOptionsNoLoc() {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
-    final options = _availablePageOptions(loc);
-    final optionIds = options.map((e) => e.id).toList(growable: false);
+    return _availablePageOptions(loc);
+  }
+
+  Future<void> _openNavSettings() async {
+    final optionIds =
+        _availablePageOptionsNoLoc().map((e) => e.id).toList(growable: false);
     final current = (_bottomNavIds ?? _defaultBottomNav())
         .where((id) => optionIds.contains(id))
         .toList();
@@ -972,13 +1417,22 @@ class _MobileShellState extends State<_MobileShell> {
       if (!normalizedCurrent.contains(id)) normalizedCurrent.add(id);
     }
     final res = await Navigator.of(context).push<List<String>>(
-      MaterialPageRoute(
+      AppScalePageRoute(
         builder: (_) => _NavSettingsPage(
-          options: options,
+          optionsBuilder: _availablePageOptionsNoLoc,
           initialOrder: normalizedCurrent,
-          onImportWakeUp: _timetableController.importWakeUp,
+          onImportWakeUp: () async {
+            if (_timetableController.importWakeUp != null) {
+              await _timetableController.importWakeUp!();
+            } else {
+              final loc = Provider.of<LocaleProvider>(context, listen: false);
+              showExpressiveSnackBar(context,
+                  loc.t('请先切换到课表页面', 'Please switch to Timetable page first'));
+            }
+          },
           onClearTimetable: _timetableController.clearTimetable,
           isTeacher: widget.session.isTeacher,
+          session: widget.session,
         ),
       ),
     );
@@ -1003,6 +1457,10 @@ class _MobileShellState extends State<_MobileShell> {
           controller: _timetableController,
           onReady: () => _onPageReady(id),
         ),
+      'schedule' => SchedulePage(
+          session: widget.session,
+          onReady: () => _onPageReady(id),
+        ),
       'todo' =>
         TodosPage(session: widget.session, onReady: () => _onPageReady(id)),
       'contact' =>
@@ -1013,6 +1471,9 @@ class _MobileShellState extends State<_MobileShell> {
           session: widget.session, onReady: () => _onPageReady(id)),
       'class_attendance' => ClassAttendanceOverviewPage(
           session: widget.session, onReady: () => _onPageReady(id)),
+      'qrcode' => QrCodePage(session: widget.session),
+      'weblinks' => WeblinksPage(session: widget.session),
+      'notifications' => NotificationsPage(session: widget.session),
       _ => TimetablePage(
           session: widget.session,
           onLogout: widget.onLogout,
@@ -1076,7 +1537,17 @@ class _MobileShellState extends State<_MobileShell> {
             ),
           ]
         : navItems;
-    final navIndex = barItems.indexWhere((e) => e.id == _activePageId);
+    final pageIds = _availablePageOptions(loc).map((e) => e.id).toList();
+    if (pageIds.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final resolvedActivePageId = pageIds.contains(_targetPageId)
+        ? _targetPageId!
+        : (pageIds.contains(_currentPageId) ? _currentPageId : pageIds.first);
+    final actualActiveIdx = pageIds.isEmpty
+        ? 0
+        : pageIds.indexOf(resolvedActivePageId).clamp(0, pageIds.length - 1);
+    final navIndex = barItems.indexWhere((e) => e.id == resolvedActivePageId);
 
     // Use an index of 0 if the active page is not in the NavigationBar
     // to prevent crashes, but ideally we style it so it doesn't look selected
@@ -1090,32 +1561,12 @@ class _MobileShellState extends State<_MobileShell> {
         barItems[navIndex].id != 'menu_fallback' &&
         barItems[navIndex].id != 'more';
 
-    final pageIds = _availablePageOptions(loc).map((e) => e.id).toList();
-    if (!pageIds.contains(_targetPageId) && pageIds.isNotEmpty) {
-      _targetPageId = pageIds.first;
-      _visiblePageId = pageIds.first;
-    }
-
-    _mountedPageIds.add(_targetPageId);
-    final children = pageIds
-        .map((id) => _mountedPageIds.contains(id)
-            ? _pageForId(id)
-            : const SizedBox.shrink())
-        .toList(growable: false);
-    final activeIdx = pageIds.indexOf(_visiblePageId);
-    final actualActiveIdx = activeIdx >= 0 ? activeIdx : 0;
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (_activePageId != 'timetable') {
-          setState(() {
-            _activePageId = 'timetable';
-            _targetPageId = 'timetable';
-            _visiblePageId = 'timetable';
-            _mountedPageIds.add('timetable');
-          });
+        if (resolvedActivePageId != 'timetable') {
+          _changePage('timetable');
           return;
         }
         if (!Platform.isAndroid) return;
@@ -1132,35 +1583,48 @@ class _MobileShellState extends State<_MobileShell> {
         SystemNavigator.pop();
       },
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         drawerEdgeDragWidth: 100, // Make it easier to swipe from edge
-        drawer: HomeDrawer(
-          session: widget.session,
-          activePage: _activePageId,
-          hiddenPageIds: _navPrefsLoaded
-              ? _navItems().map((e) => e.id).toSet()
-              : const <String>{},
-          onNavigate: (pageId) {
-            if (pageId == 'profile') {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => ProfilePage(session: widget.session)),
-              );
-              return;
-            }
-            if (pageId == 'settings') {
-              _openNavSettings();
-              return;
-            }
-            _changePage(pageId);
-          },
-          onLogout: widget.onLogout,
+        drawerScrimColor: Colors.black.withValues(alpha: 0.3),
+        drawer: Drawer(
+          child: HomeDrawer(
+            session: widget.session,
+            activePage: resolvedActivePageId,
+            hiddenPageIds: _navPrefsLoaded
+                ? _navItems().map((e) => e.id).toSet()
+                : const <String>{},
+            onNavigate: (pageId) {
+              if (pageId == 'profile') {
+                Navigator.of(context).push(
+                  AppSlidePageRoute(
+                    builder: (_) => ProfilePage(session: widget.session),
+                  ),
+                );
+                return;
+              }
+              if (pageId == 'settings') {
+                _openNavSettings();
+                return;
+              }
+              _changePage(pageId);
+            },
+            onLogout: widget.onLogout,
+          ),
         ),
         body: Builder(
           builder: (context) {
-            return _FadeIndexedStack(
-              index: actualActiveIdx,
-              children: children,
+            return _PagedShellViewport(
+              scrollDirection: Axis.horizontal,
+              pageIds: pageIds,
+              activeIndex: actualActiveIdx,
+              onPageChanged: (id) {
+                if (!mounted) return;
+                setState(() {
+                  _currentPageId = id;
+                  _targetPageId = null;
+                });
+              },
+              pageBuilder: (context, index) => _pageForId(pageIds[index]),
             );
           },
         ),
@@ -1168,7 +1632,7 @@ class _MobileShellState extends State<_MobileShell> {
           builder: (context) {
             final key = ValueKey(barItems.map((e) => e.id).join('|'));
             return AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
+              duration: kAppRouteTransitionDuration,
               child: NavigationBar(
                 key: key,
                 selectedIndex: actualNavIndex,
@@ -1196,18 +1660,21 @@ class _MobileShellState extends State<_MobileShell> {
 }
 
 class _NavSettingsPage extends StatefulWidget {
-  final List<({String id, String label, IconData icon})> options;
+  final List<({String id, String label, IconData icon})> Function()
+      optionsBuilder;
   final List<String> initialOrder;
   final Future<void> Function()? onImportWakeUp;
   final Future<void> Function()? onClearTimetable;
   final bool isTeacher;
+  final Session session;
 
   const _NavSettingsPage({
-    required this.options,
+    required this.optionsBuilder,
     required this.initialOrder,
     required this.onImportWakeUp,
     required this.onClearTimetable,
     required this.isTeacher,
+    required this.session,
   });
 
   @override
@@ -1216,15 +1683,22 @@ class _NavSettingsPage extends StatefulWidget {
 
 class _NavSettingsPageState extends State<_NavSettingsPage> {
   late List<String> _order;
+  late final TextEditingController _cloudUrlController;
 
   @override
   void initState() {
     super.initState();
-    final optionIds = widget.options.map((e) => e.id).toList(growable: false);
-    _order = widget.initialOrder.where((id) => optionIds.contains(id)).toList();
-    for (final id in optionIds) {
-      if (!_order.contains(id)) _order.add(id);
-    }
+    _cloudUrlController =
+        TextEditingController(text: ApiConfig.instance.cloudIp.trim());
+    // We don't have loc in initState, so we can't get options yet.
+    // Wait, initialOrder handles that.
+    _order = widget.initialOrder.toList();
+  }
+
+  @override
+  void dispose() {
+    _cloudUrlController.dispose();
+    super.dispose();
   }
 
   @override
@@ -1233,15 +1707,23 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
     final tt = Theme.of(context).textTheme;
     final isDesktop =
         Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final localeProvider = Provider.of<LocaleProvider>(context);
+    final currentOptions = widget.optionsBuilder();
+
+    final optionIds = currentOptions.map((e) => e.id).toList(growable: false);
+    final validOrder = _order.where((id) => optionIds.contains(id)).toList();
+    for (final id in optionIds) {
+      if (!validOrder.contains(id)) validOrder.add(id);
+    }
+    _order = validOrder;
+
     final optionsById = {
-      for (final o in widget.options) o.id: o,
+      for (final o in currentOptions) o.id: o,
     };
     final orderedOpts = _order
         .map((id) => optionsById[id])
         .whereType<({String id, String label, IconData icon})>()
         .toList(growable: false);
-
-    final localeProvider = Provider.of<LocaleProvider>(context);
 
     return PopScope(
       canPop: false,
@@ -1270,8 +1752,6 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 128)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1301,14 +1781,23 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                   final id = _order[index];
                   final o = optionsById[id];
                   if (o == null) return child;
-                  return Material(
-                    elevation: 6,
-                    color: cs.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(0),
-                      side: BorderSide(
-                          color: cs.outlineVariant.withValues(alpha: 128)),
-                    ),
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
+                  return AnimatedBuilder(
+                    animation: animation,
+                    builder: (context, child) {
+                      return Material(
+                        elevation: 0,
+                        color: isDark
+                            ? const Color(0xFF2C2C2C)
+                            : const Color(0xFFF5F5F5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide.none,
+                        ),
+                        child: child,
+                      );
+                    },
                     child: ListTile(
                       leading: Icon(o.icon),
                       title: Text(o.label),
@@ -1331,9 +1820,7 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
                     margin: const EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: cs.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 128)),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: ListTile(
                       leading: Icon(o.icon),
@@ -1348,6 +1835,220 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
               ),
               const SizedBox(height: 16),
             ],
+            const SizedBox(height: 16),
+            Text(
+              localeProvider.t('云端配置', 'Cloud Configuration'),
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    title: Text(localeProvider.t('使用云端数据', 'Use Cloud Data')),
+                    subtitle: Text(localeProvider.t('开启后将连接到指定的云端服务器',
+                        'Connect to a remote server when enabled')),
+                    value: ApiConfig.instance.useCloud,
+                    onChanged: (bool value) async {
+                      ApiConfig.instance.useCloud = value;
+                      await ApiConfig.instance.save(widget.session.dataDir);
+                      if (value) {
+                        widget.session.startRealtimeSync();
+                      } else {
+                        widget.session.stopRealtimeSync();
+                      }
+                      setState(() {});
+                    },
+                  ),
+                  if (ApiConfig.instance.useCloud) ...[
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: TextField(
+                        controller: _cloudUrlController,
+                        keyboardType: TextInputType.url,
+                        textInputAction: TextInputAction.done,
+                        decoration: InputDecoration(
+                          hintText: 'https://192.168.1.x:8080',
+                          helperText: localeProvider.t(
+                            '示例：`https://192.168.1.x:8080`',
+                            'Example: `https://192.168.1.x:8080`',
+                          ),
+                          prefixIcon: const Icon(Icons.cloud_outlined),
+                        ),
+                        onChanged: (val) {
+                          ApiConfig.instance.cloudIp = val.trim();
+                        },
+                        onSubmitted: (val) async {
+                          ApiConfig.instance.cloudIp = val.trim();
+                          await ApiConfig.instance.save(widget.session.dataDir);
+                          widget.session.startRealtimeSync();
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            style: ButtonStyle(
+                              backgroundColor:
+                                  WidgetStatePropertyAll(cs.primary),
+                              foregroundColor:
+                                  WidgetStatePropertyAll(cs.onPrimary),
+                              elevation: const WidgetStatePropertyAll(0),
+                              overlayColor:
+                                  WidgetStateProperty.resolveWith((states) {
+                                if (states.contains(WidgetState.pressed)) {
+                                  return cs.onPrimary.withValues(alpha: 0.3);
+                                }
+                                return Colors.transparent;
+                              }),
+                            ),
+                            onPressed: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              ApiConfig.instance.cloudIp =
+                                  _cloudUrlController.text.trim();
+                              await ApiConfig.instance
+                                  .save(widget.session.dataDir);
+                              widget.session.startRealtimeSync();
+                              if (!mounted) return;
+                              setState(() {});
+                              messenger.showSnackBar(SnackBar(
+                                  content: Text(localeProvider.t(
+                                      '已保存云端地址', 'Cloud URL saved'))));
+                              Future.delayed(const Duration(seconds: 1), () {
+                                if (mounted)
+                                  Navigator.of(context)
+                                      .maybePop(_order.toList());
+                              });
+                            },
+                            child: Text(localeProvider.t('保存云端地址', 'Save URL')),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () async {
+                              Future<void> connect() async {
+                                final messenger = ScaffoldMessenger.of(context);
+                                ApiConfig.instance.cloudIp =
+                                    _cloudUrlController.text.trim();
+                                await ApiConfig.instance
+                                    .save(widget.session.dataDir);
+                                widget.session.startRealtimeSync();
+                                if (!mounted) return;
+                                setState(() {});
+                                final res = await ApiConfig.instance
+                                    .get('/api/system/init?seed=false');
+                                if (!context.mounted) return;
+                                if (res['ok'] == true) {
+                                  messenger.showSnackBar(SnackBar(
+                                    content: Text(localeProvider.t(
+                                        '链接成功', 'Connection successful')),
+                                    backgroundColor: Colors.green,
+                                  ));
+                                  // Close settings and trigger logout/return to login
+                                  Navigator.of(context)
+                                      .maybePop(_order.toList());
+                                  // Wait for the animation to finish then logout to go back to login screen
+                                  Future.delayed(
+                                      const Duration(milliseconds: 300), () {
+                                    if (mounted) {
+                                      // Call logout callback if possible, or just pushReplacement
+                                      // Since we are in NavSettingsPage, we can't directly call onLogout from shell.
+                                      // Wait, we have access to shell's context if we use root navigator?
+                                      // Actually, we can just clear token and pushReplacement to LoginPage
+                                      // or better, if we have a way to notify ShellPage.
+                                      // The easiest way is to pushAndRemoveUntil.
+                                      Navigator.of(context, rootNavigator: true)
+                                          .pushAndRemoveUntil(
+                                        MaterialPageRoute(
+                                          builder: (ctx) => LoginPage(
+                                            dataDir: widget.session.dataDir,
+                                            cliPath:
+                                                widget.session.cli?.exePath ??
+                                                    '',
+                                            nativeLibDir: widget
+                                                .session.features.nativeLibDir,
+                                            onLoggedIn: (newSession) {
+                                              Navigator.of(ctx).pushReplacement(
+                                                MaterialPageRoute(
+                                                  builder: (_) => ShellPage(
+                                                    session: newSession,
+                                                    onLogout: () {
+                                                      // ...
+                                                    },
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        (route) => false,
+                                      );
+                                    }
+                                  });
+                                } else {
+                                  final code = res['error']?['code'] ?? '';
+                                  final msg = res['error']?['message'] ?? '';
+                                  if (code == 'unauthorized' ||
+                                      msg.contains('token') ||
+                                      msg.contains('失效')) {
+                                    ApiConfig.instance.token = '';
+                                    await ApiConfig.instance
+                                        .save(widget.session.dataDir);
+                                    if (!context.mounted) return;
+                                    await Navigator.of(context)
+                                        .push(MaterialPageRoute(
+                                            builder: (ctx) => LoginPage(
+                                                  dataDir:
+                                                      widget.session.dataDir,
+                                                  cliPath: widget.session.cli
+                                                          ?.exePath ??
+                                                      '',
+                                                  nativeLibDir: widget.session
+                                                      .features.nativeLibDir,
+                                                  onLoggedIn: (newSession) {
+                                                    Navigator.of(ctx).pop();
+                                                  },
+                                                )));
+                                    if (mounted) {
+                                      await connect();
+                                    }
+                                  } else {
+                                    messenger.showSnackBar(SnackBar(
+                                      content: Text(
+                                          '${localeProvider.t('链接失败', 'Connection failed')}: $msg'),
+                                      backgroundColor: Colors.red,
+                                    ));
+                                  }
+                                }
+                              }
+
+                              await connect();
+                            },
+                            child:
+                                Text(localeProvider.t('立即链接', 'Connect Now')),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             Text(
               localeProvider.t('主题与语言', 'Theme & Language'),
               style: tt.titleSmall?.copyWith(
@@ -1361,8 +2062,6 @@ class _NavSettingsPageState extends State<_NavSettingsPage> {
               decoration: BoxDecoration(
                 color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(24),
-                border:
-                    Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
