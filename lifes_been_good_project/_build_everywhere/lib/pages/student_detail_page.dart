@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/course.dart';
 import '../models/student.dart';
+import '../services/api_config.dart';
 import '../services/local_profiles.dart';
 import '../state/session.dart';
 import '../widgets/expressive_ui.dart';
@@ -31,11 +32,13 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   Map<String, int> _counts = const {};
   List<Map<String, String>> _recent = const [];
   Map<String, String> _avatarMap = const {};
-  
+
   DateTime? _startDate;
   DateTime? _endDate;
   int _currentPage = 0;
   static const int _pageSize = 10;
+
+  Map<String, String> _classNameByCode = const {};
 
   @override
   void initState() {
@@ -69,6 +72,63 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     }
   }
 
+  Map<String, String> _normalizeStringMap(Map raw) {
+    return raw.map(
+      (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
+    );
+  }
+
+  Future<Map<String, String>> _loadClassNameMap() async {
+    final rows =
+        await LocalProfiles.getAllClassesWithNames(widget.session.dataDir);
+    final out = <String, String>{};
+    for (final row in rows) {
+      final id = (row['id'] ?? '').trim();
+      final name = (row['name'] ?? '').trim();
+      if (id.isEmpty) continue;
+      out[id] = name.isNotEmpty ? name : id;
+    }
+    return out;
+  }
+
+  String _displayClassLabel(Student student) {
+    final code = student.classCode.trim();
+    final directName = student.className.trim();
+    if (directName.isNotEmpty) return directName;
+    if (code.isEmpty) return '';
+    return (_classNameByCode[code] ?? code).trim();
+  }
+
+  DateTime? _parseFlexibleDateTime(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return null;
+    final candidates = <String>[
+      value,
+      value.replaceFirst(' ', 'T'),
+      value.replaceAll('/', '-').replaceFirst(' ', 'T'),
+    ];
+    for (final candidate in candidates) {
+      try {
+        return DateTime.parse(candidate).toLocal();
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String _formatDisplayDateTime(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '—';
+    final dt = _parseFlexibleDateTime(value);
+    if (dt != null) {
+      final mm = dt.month.toString().padLeft(2, '0');
+      final dd = dt.day.toString().padLeft(2, '0');
+      final hh = dt.hour.toString().padLeft(2, '0');
+      final min = dt.minute.toString().padLeft(2, '0');
+      return '$mm-$dd $hh:$min';
+    }
+    return value.replaceFirst('T', ' ').replaceFirst('Z', '');
+  }
+
   Future<void> _refresh() async {
     setState(() {
       _loading = true;
@@ -77,16 +137,28 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
 
     try {
       // Reload student data from CSV to get latest role/position
-      final res = await widget.session.features
-          .csvOp(action: 'read', file: 'students.csv');
+      final classNames = await _loadClassNameMap();
+      Map<String, dynamic> res;
+      if (ApiConfig.instance.useCloud) {
+        res = await ApiConfig.instance.get('/api/students');
+      } else {
+        res = await widget.session.features
+            .csvOp(action: 'read', file: 'students.csv');
+      }
       if (res['ok'] == true) {
         final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
-        final rows =
-            items.map((e) => (e as Map).cast<String, String>()).toList();
+        final rows = items
+            .whereType<Map>()
+            .map(_normalizeStringMap)
+            .toList(growable: false);
         final current = rows.where((r) => r['id'] == _student.id).firstOrNull;
         if (current != null) {
+          final latestStudent = Student.fromJson(current);
           setState(() {
-            _student = Student.fromJson(current);
+            _student = latestStudent.copyWith(
+              className: classNames[latestStudent.classCode.trim()] ??
+                  latestStudent.className,
+            );
           });
         }
       }
@@ -115,19 +187,28 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         }
       }
 
-      final sessRes = await widget.session.features
-          .csvOp(action: 'read', file: 'attendance_sessions.csv');
-      final recRes = await widget.session.features
-          .csvOp(action: 'read', file: 'attendance_records.csv');
+      Map<String, dynamic> sessRes;
+      Map<String, dynamic> recRes;
+      if (ApiConfig.instance.useCloud) {
+        sessRes = await ApiConfig.instance.get('/api/attendance/sessions');
+        recRes = await ApiConfig.instance.get('/api/attendance/records');
+      } else {
+        sessRes = await widget.session.features
+            .csvOp(action: 'read', file: 'attendance_sessions.csv');
+        recRes = await widget.session.features
+            .csvOp(action: 'read', file: 'attendance_records.csv');
+      }
 
       final sessions =
           (((sessRes['data'] ?? const {})['items'] as List?) ?? const [])
-              .map((e) => (e as Map).cast<String, String>())
-              .toList();
+              .whereType<Map>()
+              .map(_normalizeStringMap)
+              .toList(growable: false);
       final records =
           (((recRes['data'] ?? const {})['items'] as List?) ?? const [])
-              .map((e) => (e as Map).cast<String, String>())
-              .toList();
+              .whereType<Map>()
+              .map(_normalizeStringMap)
+              .toList(growable: false);
 
       final sessionsById = <String, Map<String, String>>{};
       for (final s in sessions) {
@@ -158,6 +239,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         mine.add({
           'status': st,
           'marked_at': (r['marked_at'] ?? '').trim(),
+          'started_at': (session['started_at'] ?? '').trim(),
           'course_id': courseId,
           'course_name': (courseMap[courseId] ?? '').trim(),
           'session_id': sessionId,
@@ -169,13 +251,20 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       mine.sort(
           (a, b) => (b['marked_at'] ?? '').compareTo(a['marked_at'] ?? ''));
 
-      final profilesRes = await widget.session.features
-          .csvOp(action: 'read', file: 'profiles.csv');
+      Map<String, dynamic> profilesRes;
+      if (ApiConfig.instance.useCloud) {
+        profilesRes = await ApiConfig.instance.get('/api/profiles');
+      } else {
+        profilesRes = await widget.session.features
+            .csvOp(action: 'read', file: 'profiles.csv');
+      }
       final avatarMap = <String, String>{};
       if (profilesRes['ok'] == true) {
-        final pItems = ((profilesRes['data'] ?? const {})['items'] as List?) ?? [];
+        final pItems =
+            ((profilesRes['data'] ?? const {})['items'] as List?) ?? [];
         for (final pi in pItems) {
-          final row = (pi as Map).cast<String, String>();
+          if (pi is! Map) continue;
+          final row = _normalizeStringMap(pi);
           final pid = (row['id'] ?? '').trim();
           final av = (row['avatar'] ?? '').trim();
           if (pid.isNotEmpty && av.isNotEmpty) avatarMap[pid] = av;
@@ -188,214 +277,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         _counts = counts;
         _recent = mine;
         _avatarMap = avatarMap;
+        _classNameByCode = classNames;
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _status = e.toString();
-      });
-    }
-  }
-
-  Future<void> _editStudent() async {
-    final loc = Provider.of<LocaleProvider>(context, listen: false);
-    final nameCtrl = TextEditingController(text: _student.fullName);
-    final noCtrl = TextEditingController(text: _student.studentNo);
-    final phoneCtrl = TextEditingController(text: _student.phone);
-    var pos = _student.position.trim().isEmpty ? '' : _student.position.trim();
-
-    List<String> allClasses = [];
-    try {
-      allClasses = await LocalProfiles.getAllClasses(widget.session.dataDir);
-    } catch (_) {}
-
-    var selectedClass = _student.classCode.trim();
-    if (selectedClass.isEmpty && allClasses.isNotEmpty) {
-      selectedClass = allClasses.first;
-    }
-
-    if (!mounted) return;
-
-    final res = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            final cs = Theme.of(ctx).colorScheme;
-            final inputDecoration = InputDecoration(
-              filled: true,
-              fillColor: cs.surfaceContainerLow,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
-                borderSide:
-                    BorderSide(color: cs.outlineVariant.withValues(alpha: 128)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
-                borderSide: BorderSide(color: cs.primary, width: 1.5),
-              ),
-              labelStyle: TextStyle(color: cs.onSurfaceVariant),
-            );
-
-            return AlertDialog(
-              title: Text(loc.t('编辑学生信息', 'Edit Student Info')),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28)),
-              content: SizedBox(
-                width: 460,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller: noCtrl,
-                        decoration: inputDecoration.copyWith(
-                            labelText: loc.t('学号', 'Student ID')),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: nameCtrl,
-                        decoration: inputDecoration.copyWith(
-                            labelText: loc.t('姓名', 'Name')),
-                      ),
-                      const SizedBox(height: 16),
-                      ExpressiveSelector(
-                        label: loc.t('班级', 'Class'),
-                        value: selectedClass.isEmpty
-                            ? loc.t('（不指定）', '(Not specified)')
-                            : selectedClass,
-                        items: ['', ...allClasses],
-                        customLabelBuilder: (v) =>
-                            v.isEmpty ? loc.t('（不指定）', '(Not specified)') : v,
-                        onSelected: (v) {
-                          setLocal(() {
-                            selectedClass = v;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: phoneCtrl,
-                        decoration: inputDecoration.copyWith(
-                            labelText: loc.t('电话', 'Phone')),
-                      ),
-                      if (widget.session.isTeacher) ...[
-                        const SizedBox(height: 16),
-                        ExpressiveSelector(
-                          label: loc.t('职位', 'Position'),
-                          value: pos.isEmpty ? '' : pos,
-                          items: const [
-                            '',
-                            'monitor',
-                            'study',
-                            'publicity',
-                            'life',
-                            'psychological',
-                            'organize',
-                            'branch_secretary',
-                            'cadre'
-                          ],
-                          customLabelBuilder: (v) => _positionLabel(v, loc),
-                          onSelected: (v) {
-                            setLocal(() {
-                              pos = v;
-                            });
-                          },
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop('cancel'),
-                  child: Text(loc.t('取消', 'Cancel')),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(ctx).pop('ok'),
-                  style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 12),
-                  ),
-                  child: Text(loc.t('保存', 'Save')),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    final newNo = noCtrl.text.trim();
-    final newName = nameCtrl.text.trim();
-    final newPhone = phoneCtrl.text.trim();
-    final newClass = selectedClass;
-    noCtrl.dispose();
-    nameCtrl.dispose();
-    phoneCtrl.dispose();
-
-    if (res != 'ok') return;
-    if (newNo.isEmpty || !newNo.startsWith('S')) {
-      setState(() {
-        _status = loc.t('学号必须以 S 开头', 'Student ID must start with "S"');
-      });
-      return;
-    }
-    if (newName.isEmpty) {
-      setState(() {
-        _status = loc.t('姓名不能为空', 'Name cannot be empty');
-      });
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _status = '';
-    });
-
-    try {
-      final res = await widget.session.features
-          .csvOp(action: 'read', file: 'students.csv');
-      if (res['ok'] != true) throw loc.t('文件读取失败', 'Failed to read file');
-
-      final items = ((res['data'] ?? const {})['items'] as List?) ?? const [];
-      final rows =
-          items.map((e) => (e as Map).cast<String, dynamic>()).toList();
-
-      if (rows.isEmpty) throw loc.t('文件格式错误', 'Invalid file format');
-
-      final headers = rows.first.keys.toList();
-
-      for (final r in rows) {
-        if ((r['id'] ?? '').toString().trim() == _student.id) {
-          r['student_no'] = newNo.replaceAll(',', '');
-          r['full_name'] = newName.replaceAll(',', '');
-          r['class_code'] = newClass.replaceAll(',', '');
-          r['phone'] = newPhone.replaceAll(',', '');
-          r['position'] = pos.replaceAll(',', '');
-          break;
-        }
-      }
-
-      await widget.session.features.csvOp(
-        action: 'write',
-        file: 'students.csv',
-        headers: headers,
-        rows: rows,
-      );
-
-      await _refresh();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -430,6 +313,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         status: status,
         markedByProfileId: widget.session.profile.id,
       );
+      widget.session.notifyDataChanged(modules: const ['attendance']);
       await _refresh();
     } catch (_) {}
   }
@@ -570,8 +454,12 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
-                                color: cs.primaryContainer,
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: Colors.grey.shade200,
+                                  width: 1,
+                                ),
                                 image: _avatarMap.containsKey(s.id) &&
                                         File(_avatarMap[s.id]!).existsSync()
                                     ? DecorationImage(
@@ -582,16 +470,16 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                     : null,
                               ),
                               alignment: Alignment.center,
-                              child: (_avatarMap.containsKey(s.id) &&
-                                      File(_avatarMap[s.id]!).existsSync())
-                                  ? null
-                                  : Text(
+                              child: !_avatarMap.containsKey(s.id) ||
+                                      !File(_avatarMap[s.id]!).existsSync()
+                                  ? Text(
                                       s.fullName.substring(0, 1),
-                                      style: tt.displaySmall?.copyWith(
-                                        color: cs.onPrimaryContainer,
+                                      style: tt.headlineMedium?.copyWith(
+                                        color: cs.primary,
                                         fontWeight: FontWeight.bold,
                                       ),
-                                    ),
+                                    )
+                                  : null,
                             ),
                             const SizedBox(width: 20),
                             Expanded(
@@ -605,8 +493,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    s.classCode.isNotEmpty
-                                        ? '${s.studentNo} · ${s.classCode}'
+                                    _displayClassLabel(s).isNotEmpty
+                                        ? '${s.studentNo} · ${_displayClassLabel(s)}'
                                         : s.studentNo,
                                     style: tt.titleMedium
                                         ?.copyWith(color: cs.onSurfaceVariant),
@@ -667,9 +555,12 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                     context: context,
                                     firstDate: DateTime(2025),
                                     lastDate: DateTime(2027),
-                                    initialDateRange: _startDate != null && _endDate != null
-                                        ? DateTimeRange(start: _startDate!, end: _endDate!)
-                                        : null,
+                                    initialDateRange:
+                                        _startDate != null && _endDate != null
+                                            ? DateTimeRange(
+                                                start: _startDate!,
+                                                end: _endDate!)
+                                            : null,
                                   );
                                   if (picked != null) {
                                     setState(() {
@@ -700,7 +591,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: Text(
                             '${_startDate!.toString().substring(0, 10)} ~ ${_endDate!.toString().substring(0, 10)}',
-                            style: tt.bodySmall?.copyWith(color: cs.primary, fontWeight: FontWeight.bold),
+                            style: tt.bodySmall?.copyWith(
+                                color: cs.primary, fontWeight: FontWeight.bold),
                           ),
                         ),
                       const SizedBox(height: 8),
@@ -708,15 +600,16 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                         var filtered = _recent;
                         if (_startDate != null && _endDate != null) {
                           filtered = _recent.where((r) {
-                            final markedAt = (r['marked_at'] ?? '').trim();
-                            if (markedAt.isEmpty) return false;
-                            try {
-                              final date = DateTime.parse(markedAt.split(' ').first);
-                              return date.isAfter(_startDate!.subtract(const Duration(days: 1))) &&
-                                  date.isBefore(_endDate!.add(const Duration(days: 1)));
-                            } catch (_) {
-                              return false;
-                            }
+                            final eventAt =
+                                (r['marked_at'] ?? '').trim().isNotEmpty
+                                    ? (r['marked_at'] ?? '').trim()
+                                    : (r['started_at'] ?? '').trim();
+                            final date = _parseFlexibleDateTime(eventAt);
+                            if (date == null) return false;
+                            return date.isAfter(_startDate!
+                                    .subtract(const Duration(days: 1))) &&
+                                date.isBefore(
+                                    _endDate!.add(const Duration(days: 1)));
                           }).toList();
                         }
 
@@ -739,7 +632,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                         .withValues(alpha: 0.5)),
                                 const SizedBox(height: 16),
                                 Text(loc.t('暂无记录', 'No Records'),
-                                    style: TextStyle(color: cs.onSurfaceVariant)),
+                                    style:
+                                        TextStyle(color: cs.onSurfaceVariant)),
                               ],
                             ),
                           );
@@ -747,7 +641,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
 
                         final totalPages = (filtered.length / _pageSize).ceil();
                         final startIdx = _currentPage * _pageSize;
-                        final endIdx = (startIdx + _pageSize).clamp(0, filtered.length);
+                        final endIdx =
+                            (startIdx + _pageSize).clamp(0, filtered.length);
                         final pageItems = filtered.sublist(startIdx, endIdx);
 
                         return Column(
@@ -761,12 +656,14 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                               itemBuilder: (context, index) {
                                 final r = pageItems[index];
                                 final status = (r['status'] ?? '').trim();
-                                final courseName = (r['course_name'] ?? '').trim();
+                                final courseName =
+                                    (r['course_name'] ?? '').trim();
                                 final courseId = (r['course_id'] ?? '').trim();
 
                                 final week = (r['week'] ?? '').trim();
                                 final period = (r['period'] ?? '').trim();
-                                final weekStr = week.isNotEmpty ? ' 第$week周' : '';
+                                final weekStr =
+                                    week.isNotEmpty ? ' 第$week周' : '';
                                 final periodStr =
                                     period.isNotEmpty ? ' 第$period节' : '';
 
@@ -776,72 +673,84 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                         ? '$courseId$weekStr$periodStr'
                                         : loc.t('未命名课程', 'Unnamed Course'));
                                 final markedAt = (r['marked_at'] ?? '').trim();
+                                final startedAt =
+                                    (r['started_at'] ?? '').trim();
+                                final displayTime = markedAt.isNotEmpty
+                                    ? _formatDisplayDateTime(markedAt)
+                                    : _formatDisplayDateTime(startedAt);
 
                                 Color statusColor = cs.primary;
                                 if (status == 'late') statusColor = cs.tertiary;
                                 if (status == 'absent') statusColor = cs.error;
-                                if (status == 'leave') statusColor = cs.secondary;
+                                if (status == 'leave')
+                                  statusColor = cs.secondary;
 
                                 return Bounceable(
-                                  onTap: () =>
-                                      _openRecentRecordStatusPicker(context, r),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: cs.surface,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                          color: cs.outlineVariant
-                                              .withValues(alpha: 0.5)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                statusColor.withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(12),
+                                    onTap: () => _openRecentRecordStatusPicker(
+                                        context, r),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: cs.surface,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                            color: cs.outlineVariant
+                                                .withValues(alpha: 0.5)),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: statusColor.withValues(
+                                                  alpha: 0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Icon(
+                                              status == 'present'
+                                                  ? Icons.check_circle_rounded
+                                                  : status == 'late'
+                                                      ? Icons
+                                                          .access_time_filled_rounded
+                                                      : status == 'leave'
+                                                          ? Icons
+                                                              .beach_access_rounded
+                                                          : Icons
+                                                              .cancel_rounded,
+                                              color: statusColor,
+                                              size: 24,
+                                            ),
                                           ),
-                                          child: Icon(
-                                            status == 'present'
-                                                ? Icons.check_circle_rounded
-                                                : status == 'late'
-                                                    ? Icons
-                                                        .access_time_filled_rounded
-                                                    : status == 'leave'
-                                                        ? Icons.beach_access_rounded
-                                                        : Icons.cancel_rounded,
-                                            color: statusColor,
-                                            size: 24,
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(title,
+                                                    style: tt.titleMedium
+                                                        ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold)),
+                                                const SizedBox(height: 2),
+                                                Text(displayTime,
+                                                    style: tt.bodySmall?.copyWith(
+                                                        color: cs
+                                                            .onSurfaceVariant)),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(title,
-                                                  style: tt.titleMedium?.copyWith(
-                                                      fontWeight: FontWeight.bold)),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                  markedAt.isEmpty ? '—' : markedAt,
-                                                  style: tt.bodySmall?.copyWith(
-                                                      color: cs.onSurfaceVariant)),
-                                            ],
-                                          ),
-                                        ),
-                                        _buildBadge(
-                                            context,
-                                            _statusLabel(status, loc),
-                                            statusColor.withValues(alpha: 0.15),
-                                            statusColor),
-                                      ],
-                                    ),
-                                  )
-                                );
+                                          _buildBadge(
+                                              context,
+                                              _statusLabel(status, loc),
+                                              statusColor.withValues(
+                                                  alpha: 0.15),
+                                              statusColor),
+                                        ],
+                                      ),
+                                    ));
                               },
                             ),
                             if (totalPages > 1)
@@ -854,19 +763,22 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                       onPressed: _currentPage > 0
                                           ? () => setState(() => _currentPage--)
                                           : null,
-                                      icon: const Icon(Icons.chevron_left_rounded),
+                                      icon: const Icon(
+                                          Icons.chevron_left_rounded),
                                     ),
                                     const SizedBox(width: 16),
                                     Text(
                                       '${_currentPage + 1} / $totalPages',
-                                      style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                      style: tt.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(width: 16),
                                     IconButton(
                                       onPressed: _currentPage < totalPages - 1
                                           ? () => setState(() => _currentPage++)
                                           : null,
-                                      icon: const Icon(Icons.chevron_right_rounded),
+                                      icon: const Icon(
+                                          Icons.chevron_right_rounded),
                                     ),
                                   ],
                                 ),
