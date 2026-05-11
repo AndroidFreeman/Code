@@ -2,12 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path/path.dart' as p;
 
 import '../main.dart';
 import '../models/profile.dart';
 import '../services/local_profiles.dart';
 import '../services/native_cli.dart';
 import '../services/native_features.dart';
+import '../services/api_config.dart';
 import '../state/session.dart';
 import '../widgets/expressive_ui.dart';
 
@@ -41,9 +43,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _classPasswordCtrl = TextEditingController();
 
-  List<String> _allClasses = [];
-  String? _selectedClass;
+  List<Map<String, String>> _allClasses = [];
+  String _selectedClass = '';
 
   @override
   void initState() {
@@ -53,12 +56,24 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   Future<void> _loadClasses() async {
     try {
-      final classes = await LocalProfiles.getAllClasses(widget.dataDir);
+      final classes =
+          await LocalProfiles.getAllClassesWithNames(widget.dataDir);
+      final lastClassFile = File(p.join(widget.dataDir, 'last_class.txt'));
+      String lastClass = '';
+      if (await lastClassFile.exists()) {
+        lastClass = (await lastClassFile.readAsString()).trim();
+      }
+
       if (mounted) {
         setState(() {
           _allClasses = classes;
           if (classes.isNotEmpty) {
-            _selectedClass = classes.first;
+            if (lastClass.isNotEmpty &&
+                classes.any((c) => c['id'] == lastClass)) {
+              _selectedClass = lastClass;
+            } else {
+              _selectedClass = classes.first['id'] ?? '';
+            }
           }
         });
       }
@@ -71,6 +86,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _passwordCtrl.dispose();
+    _classPasswordCtrl.dispose();
     super.dispose();
   }
 
@@ -106,7 +122,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final name = _nameCtrl.text.trim();
     final phone = _phoneCtrl.text.trim();
     final password = _passwordCtrl.text;
-    final classCode = _selectedClass ?? 'CLS1';
+    final classCode = _selectedClass.isEmpty ? 'CLS1' : _selectedClass;
 
     final validateMsg = LocalProfiles.validateAccountNo(
       role: _role,
@@ -140,12 +156,36 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       return;
     }
 
+    if (_isRegister && _role == 'student' && ApiConfig.instance.useCloud) {
+      final classPassword = _classPasswordCtrl.text;
+      if (classPassword.isEmpty) {
+        setState(() {
+          _status = _t(isEn, '请输入入班密码', 'Please enter class password');
+        });
+        return;
+      }
+    }
+
     setState(() {
       _loading = true;
       _status = '';
     });
 
     try {
+      if (_isRegister && _role == 'student' && ApiConfig.instance.useCloud) {
+        final verifyRes = await ApiConfig.instance.post(
+            '/api/classes/$classCode/verify',
+            {'password': _classPasswordCtrl.text});
+        if (verifyRes['ok'] != true) {
+          setState(() {
+            _loading = false;
+            _status = _t(isEn, '班级密码错误或班级不存在',
+                'Incorrect class password or class does not exist');
+          });
+          return;
+        }
+      }
+
       Profile profile;
       if (_isRegister) {
         profile = await LocalProfiles.register(
@@ -184,10 +224,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         dataDir: widget.dataDir,
         profile: profile.copyWith(position: position),
       );
+      await session.preloadAll();
       try {
         await LocalProfiles.saveAutoLogin(
           dataDir: widget.dataDir,
-          profileId: profile.id,
+          profile: profile.copyWith(position: position),
         );
       } catch (_) {}
       if (!mounted) return;
@@ -340,7 +381,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   const SizedBox(height: 16),
                   if (_role == 'student') ...[
                     DropdownButtonFormField<String>(
-                      initialValue: _selectedClass,
+                      value: _selectedClass.isEmpty ? null : _selectedClass,
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.class_outlined),
                         labelText: _t(isEn, '班级', 'Class'),
@@ -353,13 +394,43 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         ),
                       ),
                       items: _allClasses
-                          .map(
-                              (c) => DropdownMenuItem(value: c, child: Text(c)))
+                          .map((c) => DropdownMenuItem(
+                              value: c['id'], child: Text(c['name'] ?? '')))
                           .toList(),
                       onChanged: _loading
                           ? null
-                          : (v) => setState(() => _selectedClass = v),
+                          : (v) {
+                              setState(() => _selectedClass = v ?? '');
+                              if (v != null) {
+                                final f = File(
+                                    p.join(widget.dataDir, 'last_class.txt'));
+                                f
+                                    .writeAsString(v)
+                                    .then((_) {})
+                                    .catchError((_) {});
+                              }
+                            },
                     ),
+                    if (ApiConfig.instance.useCloud) ...[
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _classPasswordCtrl,
+                        enabled: !_loading,
+                        obscureText: true,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.key_outlined),
+                          labelText: _t(isEn, '入班密码', 'Class Password'),
+                          hintText: _t(isEn, '请输入入班密码', 'Enter class password'),
+                          filled: true,
+                          fillColor:
+                              cs.surfaceContainerHighest.withValues(alpha: 0.3),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                   ],
                   TextField(
