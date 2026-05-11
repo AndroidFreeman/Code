@@ -1,4 +1,165 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import '../services/api_config.dart';
+
+const Curve kAppMotionCurve = Cubic(0.2, 0.0, 0.0, 1.0);
+const Curve kAppEmphasisCurve = Cubic(0.2, 0.0, 0.0, 1.0);
+const Duration kAppRouteTransitionDuration = Duration(milliseconds: 200);
+const Duration kAppMotionDuration = Duration(milliseconds: 200);
+
+class AvatarImageProvider {
+  static final Map<String, ImageProvider> _cache = {};
+  static final Map<String, DecorationImage> _decCache = {};
+
+  static ImageProvider? get(String path) {
+    if (path.isEmpty) return null;
+    if (_cache.containsKey(path)) return _cache[path];
+
+    ImageProvider? provider;
+    if (path.startsWith('http')) {
+      provider = NetworkImage(ApiConfig.replaceLocalhost(path));
+    } else if (path.startsWith('data:image')) {
+      final base64String = path.split(',').last;
+      try {
+        provider = MemoryImage(base64Decode(base64String));
+      } catch (_) {
+        return null;
+      }
+    } else if (File(path).existsSync()) {
+      provider = FileImage(File(path));
+    }
+
+    if (provider != null) {
+      _cache[path] = provider;
+    }
+    return provider;
+  }
+
+  static DecorationImage? getDecorationImage(String path) {
+    if (path.isEmpty) return null;
+    if (_decCache.containsKey(path)) return _decCache[path];
+
+    final provider = get(path);
+    if (provider == null) return null;
+
+    final dec = DecorationImage(image: provider, fit: BoxFit.contain);
+    _decCache[path] = dec;
+    return dec;
+  }
+
+  static void evict(String path) {
+    _cache.remove(path);
+    _decCache.remove(path);
+  }
+}
+
+class AppSlidePageTransitionsBuilder extends PageTransitionsBuilder {
+  const AppSlidePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final forward = CurvedAnimation(parent: animation, curve: kAppMotionCurve);
+    final reverse = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: kAppMotionCurve,
+    );
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.92, end: 1.0).animate(forward),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.08, 0),
+          end: Offset.zero,
+        ).animate(forward),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset.zero,
+            end: const Offset(-0.04, 0),
+          ).animate(reverse),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class AppScalePageRoute<T> extends PageRouteBuilder<T> {
+  AppScalePageRoute({
+    required WidgetBuilder builder,
+    RouteSettings? settings,
+    bool fullscreenDialog = false,
+  }) : super(
+          settings: settings,
+          fullscreenDialog: fullscreenDialog,
+          transitionDuration: const Duration(milliseconds: 250),
+          reverseTransitionDuration: const Duration(milliseconds: 250),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              builder(context),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final forward = CurvedAnimation(
+              parent: animation,
+              curve: kAppMotionCurve,
+            );
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.95, end: 1.0).animate(forward),
+                child: child,
+              ),
+            );
+          },
+        );
+}
+
+class AppSlidePageRoute<T> extends PageRouteBuilder<T> {
+  AppSlidePageRoute({
+    required WidgetBuilder builder,
+    RouteSettings? settings,
+    bool fullscreenDialog = false,
+  }) : super(
+          settings: settings,
+          fullscreenDialog: fullscreenDialog,
+          transitionDuration: kAppRouteTransitionDuration,
+          reverseTransitionDuration: kAppRouteTransitionDuration,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              builder(context),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final forward = CurvedAnimation(
+              parent: animation,
+              curve: kAppMotionCurve,
+            );
+            final reverse = CurvedAnimation(
+              parent: secondaryAnimation,
+              curve: kAppMotionCurve,
+            );
+            return FadeTransition(
+              opacity: Tween<double>(begin: 0.92, end: 1.0).animate(forward),
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.08, 0),
+                  end: Offset.zero,
+                ).animate(forward),
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: Offset.zero,
+                    end: const Offset(-0.04, 0),
+                  ).animate(reverse),
+                  child: child,
+                ),
+              ),
+            );
+          },
+        );
+}
 
 class Bounceable extends StatefulWidget {
   final Widget child;
@@ -32,10 +193,10 @@ class _BounceableState extends State<Bounceable>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 100),
+      duration: kAppMotionDuration,
     );
     _animation = Tween<double>(begin: 1.0, end: widget.scale ?? 0.98).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _controller, curve: kAppMotionCurve),
     );
   }
 
@@ -65,11 +226,77 @@ class _BounceableState extends State<Bounceable>
   }
 }
 
+class SoftPressable extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final BorderRadius? borderRadius;
+  final Duration duration;
+  final double pressedScale;
+  final Color? pressedColor;
+  final HitTestBehavior behavior;
+
+  const SoftPressable({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.borderRadius,
+    this.duration = kAppMotionDuration,
+    this.pressedScale = 0.985,
+    this.pressedColor,
+    this.behavior = HitTestBehavior.deferToChild,
+  });
+
+  @override
+  State<SoftPressable> createState() => _SoftPressableState();
+}
+
+class _SoftPressableState extends State<SoftPressable> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() {
+      _pressed = value;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final scale = widget.pressedScale.clamp(0.94, 0.995);
+    return GestureDetector(
+      behavior: widget.behavior,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? scale : 1.0,
+        duration: widget.duration,
+        curve: kAppMotionCurve,
+        child: AnimatedContainer(
+          duration: widget.duration,
+          curve: kAppMotionCurve,
+          decoration: BoxDecoration(
+            color: _pressed
+                ? (widget.pressedColor ??
+                    cs.primaryContainer.withValues(alpha: 64))
+                : Colors.transparent,
+            borderRadius: widget.borderRadius,
+          ),
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
 class ExpressiveSelector extends StatefulWidget {
   final String label;
   final String? value;
   final List<String> items;
   final Function(String) onSelected;
+  final IconData? leadingIcon;
   final Color? backgroundColor;
   final Color? foregroundColor;
   final String Function(String)? customLabelBuilder;
@@ -83,6 +310,7 @@ class ExpressiveSelector extends StatefulWidget {
     required this.value,
     required this.items,
     required this.onSelected,
+    this.leadingIcon,
     this.backgroundColor,
     this.foregroundColor,
     this.customLabelBuilder,
@@ -95,8 +323,150 @@ class ExpressiveSelector extends StatefulWidget {
   State<ExpressiveSelector> createState() => _ExpressiveSelectorState();
 }
 
-class _ExpressiveSelectorState extends State<ExpressiveSelector> {
-  final MenuController _controller = MenuController();
+class _ExpressiveSelectorState extends State<ExpressiveSelector>
+    with SingleTickerProviderStateMixin {
+  bool _isOpen = false;
+  OverlayEntry? _overlayEntry;
+  final LayerLink _layerLink = LayerLink();
+
+  late AnimationController _animCtrl;
+  late Animation<double> _heightAnim;
+  late Animation<double> _opacityAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _heightAnim = CurvedAnimation(
+      parent: _animCtrl,
+      curve: Curves.easeInOutCubic,
+    );
+    _opacityAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animCtrl,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  void _toggleOpen() {
+    if (_isOpen) {
+      _isOpen = false;
+      _animCtrl.reverse().then((_) {
+        if (!_isOpen) _removeOverlay();
+      });
+    } else {
+      _isOpen = true;
+      _showOverlay();
+      _animCtrl.forward();
+    }
+    setState(() {});
+  }
+
+  void _showOverlay() {
+    _removeOverlay();
+    final renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        final tt = Theme.of(context).textTheme;
+        return Positioned(
+          width: size.width,
+          child: CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            offset: Offset(0, size.height + 4),
+            child: Material(
+              color: Colors.transparent,
+              child: AnimatedBuilder(
+                animation: _animCtrl,
+                builder: (context, child) {
+                  return FractionalTranslation(
+                    translation: Offset(0, -0.05 * (1 - _animCtrl.value)),
+                    child: Opacity(
+                      opacity: _opacityAnim.value,
+                      child: ClipRect(
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          heightFactor: _heightAnim.value,
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 160),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      )
+                    ],
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: widget.items.map((item) {
+                        final isSelected = item == widget.value;
+                        return InkWell(
+                          onTap: () {
+                            _toggleOpen();
+                            widget.onSelected(item);
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 12),
+                            child: Text(
+                              widget.customLabelBuilder?.call(item) ?? item,
+                              style: tt.bodyMedium?.copyWith(
+                                color: item == '__delete__'
+                                    ? cs.error
+                                    : cs.onSurface,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -104,139 +474,79 @@ class _ExpressiveSelectorState extends State<ExpressiveSelector> {
     final tt = Theme.of(context).textTheme;
     final fg = widget.foregroundColor ?? cs.onSurface;
     final bg = widget.backgroundColor ?? cs.surfaceContainerLow;
+    final resolvedFg = ensureContrast(bg, fg);
+    final valueText = widget.value == null
+        ? null
+        : (widget.customLabelBuilder?.call(widget.value!) ?? widget.value!);
     final placeholder = Localizations.localeOf(context).languageCode == 'en'
         ? 'None selected'
         : '未选择';
-    final menuShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(20),
-      side: BorderSide(color: cs.outlineVariant.withValues(alpha: 128)),
-    );
 
-    return MenuAnchor(
-      controller: _controller,
-      style: MenuStyle(
-        elevation: const WidgetStatePropertyAll(1),
-        shape: WidgetStatePropertyAll(menuShape),
-        backgroundColor: WidgetStatePropertyAll(cs.surface),
-        surfaceTintColor: WidgetStatePropertyAll(cs.surface),
-        padding:
-            const WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 6)),
-      ),
-      menuChildren: widget.items
-          .map(
-            (item) => MenuItemButton(
-              onPressed: () {
-                _controller.close();
-                widget.onSelected(item);
-              },
-              style: ButtonStyle(
-                backgroundColor:
-                    const WidgetStatePropertyAll(Colors.transparent),
-                overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-                shape: WidgetStatePropertyAll(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                ),
-              ),
-              child: Text(
-                widget.customLabelBuilder?.call(item) ?? item,
-                style: tt.bodyMedium?.copyWith(
-                  color: item == '__delete__' ? cs.error : null,
-                ),
-              ),
-            ),
-          )
-          .toList(growable: false),
-      builder: (context, controller, child) {
-        return Bounceable(
-          onTap: () {
-            if (controller.isOpen) {
-              controller.close();
-            } else {
-              controller.open();
-            }
-          },
-          child: Container(
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Semantics(
+        button: true,
+        expanded: _isOpen,
+        child: Bounceable(
+          onTap: _toggleOpen,
+          child: AnimatedContainer(
+            duration: kAppMotionDuration,
+            curve: kAppMotionCurve,
             padding: widget.padding ??
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(16),
-              border:
-                  Border.all(color: cs.outlineVariant.withValues(alpha: 128)),
+              color: bg == cs.surfaceContainerLow ? Colors.transparent : bg,
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.label,
-                      style: (widget.labelTextStyle ??
-                              tt.labelSmall?.copyWith(
-                                color: fg.withValues(alpha: 179),
-                                fontWeight: FontWeight.bold,
-                                height: 1.1,
-                              )) ??
-                          TextStyle(
-                            color: fg.withValues(alpha: 179),
-                            fontWeight: FontWeight.bold,
-                            height: 1.1,
-                          ),
-                    ),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 160),
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0, 0.15),
-                              end: Offset.zero,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Text(
-                        widget.value == null
-                            ? placeholder
-                            : (widget.customLabelBuilder?.call(widget.value!) ??
-                                widget.value!),
-                        key: ValueKey(widget.value ?? placeholder),
-                        style: (widget.valueTextStyle ??
-                                tt.titleSmall?.copyWith(
-                                  color: fg,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.1,
-                                )) ??
-                            TextStyle(
-                              color: fg,
+                if (widget.leadingIcon != null) ...[
+                  Icon(
+                    widget.leadingIcon,
+                    size: 20,
+                    color: resolvedFg.withValues(alpha: 166),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(
+                    valueText ?? placeholder,
+                    overflow: TextOverflow.ellipsis,
+                    style: (widget.valueTextStyle ??
+                            tt.titleMedium?.copyWith(
+                              color: valueText == null
+                                  ? resolvedFg.withValues(alpha: 166)
+                                  : resolvedFg,
                               fontWeight: FontWeight.bold,
-                              height: 1.1,
-                            ),
-                      ),
-                    ),
-                  ],
+                            )) ??
+                        TextStyle(
+                          color: valueText == null
+                              ? resolvedFg.withValues(alpha: 166)
+                              : resolvedFg,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Icon(Icons.keyboard_arrow_down_rounded, color: fg, size: 20),
+                AnimatedRotation(
+                  turns: _isOpen ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOutCubic,
+                  child: Icon(Icons.keyboard_arrow_down_rounded,
+                      color: resolvedFg, size: 20),
+                ),
               ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
 
-void showExpressiveSnackBar(BuildContext context, String message, {Duration? duration}) {
+void showExpressiveSnackBar(BuildContext context, String message,
+    {Duration? duration}) {
   final cs = Theme.of(context).colorScheme;
   ScaffoldMessenger.of(context).clearSnackBars();
   ScaffoldMessenger.of(context).showSnackBar(
@@ -249,10 +559,39 @@ void showExpressiveSnackBar(BuildContext context, String message, {Duration? dur
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       backgroundColor: cs.primaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      // Standard SnackBar doesn't support easy scale/fade without a lot of boilerplate.
-      // But floating behavior with large margins and rounded corners already feels "pop-like".
-      // To get a true "pop/fade", we'd need a custom overlay or animation.
-      // Standard SnackBar behavior: floating with slide is usually enough if it's styled.
     ),
   );
+}
+
+Color resolveAccessibleOnColor(Color background) {
+  final darkContrast =
+      ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
+  return darkContrast ? Colors.white : const Color(0xFF1A1B20);
+}
+
+Color blendColors(Color a, Color b, double t) {
+  return Color.lerp(a, b, t.clamp(0.0, 1.0)) ?? a;
+}
+
+double contrastRatio(Color a, Color b) {
+  final l1 = a.computeLuminance();
+  final l2 = b.computeLuminance();
+  final lighter = math.max(l1, l2);
+  final darker = math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+Color ensureContrast(Color background, Color preferredForeground) {
+  final candidates = <Color>[
+    preferredForeground,
+    resolveAccessibleOnColor(background),
+    Colors.black,
+    Colors.white,
+  ];
+  for (final candidate in candidates) {
+    if (contrastRatio(background, candidate) >= 4.5) {
+      return candidate;
+    }
+  }
+  return resolveAccessibleOnColor(background);
 }
