@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:lpinyin/lpinyin.dart';
 
 import '../models/profile.dart';
 import '../services/local_profiles.dart';
@@ -21,19 +23,24 @@ class ContactsPage extends StatefulWidget {
   State<ContactsPage> createState() => _ContactsPageState();
 }
 
-class _ContactsPageState extends State<ContactsPage> {
+class _ContactsPageState extends State<ContactsPage>
+    with SingleTickerProviderStateMixin {
   bool _loading = true;
   String _status = '';
   List<Profile> _profiles = const [];
-  bool _dataReady = true;
+  List<Map<String, dynamic>> _myClasses = [];
+  Map<String, String> _classNameByCode = const {};
+  bool _dataReady = false;
   Set<String> _myPinnedProfileIds = {};
-  Map<String, ImageProvider?> _avatarProviders = const {};
+  StreamSubscription<SessionDataChange>? _dataChangeSub;
+  late TabController _tabController;
 
   bool _showFabMenu = false;
 
   String? _resolveAvatarUrlOrPath(String raw) {
     final v = raw.trim();
     if (v.isEmpty) return null;
+    if (v.startsWith('data:image')) return v;
     final uri = Uri.tryParse(v);
     if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
       return v;
@@ -45,42 +52,29 @@ class _ContactsPageState extends State<ContactsPage> {
     return p.join(widget.session.dataDir, v);
   }
 
-  Future<Map<String, ImageProvider?>> _buildAvatarProviders(
-      List<Profile> profiles) async {
-    final out = <String, ImageProvider?>{};
-    for (final profile in profiles) {
-      final resolved = _resolveAvatarUrlOrPath(profile.avatar);
-      if (resolved == null) continue;
-      final uri = Uri.tryParse(resolved);
-      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-        out[profile.id] = NetworkImage(resolved);
-        continue;
-      }
-      final f = File(resolved);
-      if (await f.exists()) {
-        out[profile.id] = FileImage(f);
-      }
-    }
-    return out;
+  DecorationImage? _getAvatarProvider(String path) {
+    return AvatarImageProvider.getDecorationImage(path);
   }
 
   @override
   void initState() {
     super.initState();
-    widget.session.addListener(_onSessionChanged);
+    _tabController = TabController(length: 2, vsync: this);
+
+    _dataChangeSub = widget.session
+        .watchDataChanges({'profiles', 'contacts', 'classes'}).listen((event) {
+      if (mounted) {
+        unawaited(_refresh(silent: true, forceNetwork: event.remote));
+      }
+    });
     _refresh();
   }
 
   @override
   void dispose() {
-    widget.session.removeListener(_onSessionChanged);
+    _dataChangeSub?.cancel();
+    _tabController.dispose();
     super.dispose();
-  }
-
-  void _onSessionChanged() {
-    if (mounted) {
-      _refresh(silent: true);
-    }
   }
 
   Future<Set<String>> _loadPinnedContacts() async {
@@ -101,7 +95,6 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 
   Future<void> _addPin(Profile p) async {
-    final loc = Provider.of<LocaleProvider>(context, listen: false);
     final ownerId = widget.session.profile.id.trim();
     final contactId = p.id.trim();
     if (ownerId.isEmpty || contactId.isEmpty) return;
@@ -136,7 +129,6 @@ class _ContactsPageState extends State<ContactsPage> {
   }
 
   Future<void> _removePin(Profile p) async {
-    final loc = Provider.of<LocaleProvider>(context, listen: false);
     final ownerId = widget.session.profile.id.trim();
     final contactId = p.id.trim();
     if (ownerId.isEmpty || contactId.isEmpty) return;
@@ -256,19 +248,11 @@ class _ContactsPageState extends State<ContactsPage> {
     await _addPin(selected);
   }
 
-  Future<void> _refresh({bool silent = false}) async {
-    if (!silent) {
-      setState(() {
-        _loading = true;
-        _status = '';
-      });
-    } else {
-      setState(() {
-        _loading = true;
-        _status = '';
-      });
-    }
+  String _lastSignature = '';
+  DateTime? _lastSyncTime;
 
+  Future<void> _refresh(
+      {bool silent = false, bool forceNetwork = false}) async {
     try {
       _myPinnedProfileIds = await _loadPinnedContacts();
       List<String> classes = [];
@@ -281,14 +265,36 @@ class _ContactsPageState extends State<ContactsPage> {
         classes = [widget.session.profile.classCode.trim()];
       }
 
+      final allClassesMapList =
+          await LocalProfiles.getAllClassesWithNames(widget.session.dataDir);
+      final classNameByCode = {
+        for (final row in allClassesMapList)
+          (row['id'] ?? '').trim(): ((row['name'] ?? '').trim().isEmpty
+              ? (row['id'] ?? '').trim()
+              : (row['name'] ?? '').trim()),
+      };
+
       // Fetch all profiles to get detailed info for everyone
       Map<String, dynamic> profilesRes;
-      if (await widget.session.features.hasFeature('profiles_list')) {
-        profilesRes = await widget.session.features.listProfiles();
+      if (!forceNetwork && widget.session.preloadedData['profiles'] != null) {
+        profilesRes = {
+          'ok': true,
+          'data': widget.session.preloadedData['profiles']
+        };
+      } else if (await widget.session.features.hasFeature('profiles_list')) {
+        profilesRes =
+            await widget.session.features.listProfiles(classCodes: classes);
+        if (profilesRes['ok'] == true) {
+          widget.session.preloadedData['profiles'] = profilesRes['data'];
+        }
       } else {
         final cli = widget.session.cli;
         if (cli != null) {
-          profilesRes = await cli.call('profiles.list', {});
+          profilesRes =
+              await cli.call('profiles.list', {'class_codes': classes});
+          if (profilesRes['ok'] == true) {
+            widget.session.preloadedData['profiles'] = profilesRes['data'];
+          }
         } else {
           profilesRes = {'ok': false};
         }
@@ -305,11 +311,17 @@ class _ContactsPageState extends State<ContactsPage> {
         return;
       }
 
-      final profilesRaw =
-          (((profilesRes['data'] ?? const {}) as Map)['items'] ?? const [])
-              as List;
+      List profilesRaw = [];
+      final profilesData = profilesRes['data'];
+      if (profilesData is Map && profilesData.containsKey('items')) {
+        profilesRaw = profilesData['items'] as List;
+      } else if (profilesData is List) {
+        profilesRaw = profilesData;
+      }
 
       final filteredProfiles = <Profile>[];
+      final List<Map<String, dynamic>> myClasses = [];
+
       for (final p in profilesRaw) {
         final map = (p as Map).cast<String, dynamic>();
         final profile = Profile.fromJson(map);
@@ -323,13 +335,48 @@ class _ContactsPageState extends State<ContactsPage> {
           }
         } else {
           // If student, check if they are in the target classes
-          if (classes.contains(profile.classCode.trim())) {
+          // OR if they are pinned by me
+          if (classes.contains(profile.classCode.trim()) ||
+              _myPinnedProfileIds.contains(profile.id)) {
             filteredProfiles.add(profile);
           }
         }
       }
 
-      // Sort: Pinned first, then Teachers first, then by name
+      // Build class stats for "My Class" tab
+      for (final cCode in classes) {
+        if (cCode.isEmpty) continue;
+        final cName = classNameByCode[cCode] ?? cCode;
+        final studentsInClass = profilesRaw.where((p) {
+          final map = (p as Map).cast<String, dynamic>();
+          return map['role'] != 'teacher' && (map['class_code'] ?? '') == cCode;
+        }).toList();
+
+        final headTeacher = profilesRaw.firstWhere((p) {
+          final map = (p as Map).cast<String, dynamic>();
+          final tClasses = (map['class_code'] ?? '').toString().split('|');
+          return map['role'] == 'teacher' && tClasses.contains(cCode);
+        }, orElse: () => null);
+
+        myClasses.add({
+          'code': cCode,
+          'name': cName,
+          'count': studentsInClass.length,
+          'headTeacher': headTeacher != null
+              ? Profile.fromJson((headTeacher as Map).cast<String, dynamic>())
+                  .displayWithRealName
+              : 'Unknown',
+        });
+      }
+
+      final sessionProfile = widget.session.profile;
+      final sessionIndex = filteredProfiles
+          .indexWhere((profile) => profile.id == sessionProfile.id);
+      if (sessionIndex >= 0) {
+        filteredProfiles[sessionIndex] = sessionProfile;
+      }
+
+      // Sort: Pinned first, then Teachers first, then by pinyin name
       filteredProfiles.sort((a, b) {
         final aPinned = _myPinnedProfileIds.contains(a.id);
         final bPinned = _myPinnedProfileIds.contains(b.id);
@@ -339,16 +386,42 @@ class _ContactsPageState extends State<ContactsPage> {
         if (a.role == 'teacher' && b.role != 'teacher') return -1;
         if (a.role != 'teacher' && b.role == 'teacher') return 1;
 
-        // Secondary sort by name for a better user experience
-        return a.displayWithRealName.compareTo(b.displayWithRealName);
+        // Sort by pinyin of display name
+        final pyA =
+            PinyinHelper.getPinyinE(a.displayWithRealName).toLowerCase();
+        final pyB =
+            PinyinHelper.getPinyinE(b.displayWithRealName).toLowerCase();
+        return pyA.compareTo(pyB);
       });
 
       if (!mounted) return;
-      final avatarProviders = await _buildAvatarProviders(filteredProfiles);
+
+      final signature = filteredProfiles
+              .map((e) =>
+                  '${e.id}:${e.displayWithRealName}:${e.signature}:${e.role}:${e.avatar}')
+              .join('|') +
+          '||' +
+          _myPinnedProfileIds.join('|') +
+          '||' +
+          myClasses.map((e) => '${e['code']}:${e['count']}').join('|');
+
+      if (signature == _lastSignature && _dataReady) {
+        setState(() {
+          _loading = false;
+          if (forceNetwork) _lastSyncTime = DateTime.now();
+        });
+        widget.onReady?.call();
+        return;
+      }
+      _lastSignature = signature;
+
       setState(() {
         _loading = false;
         _profiles = filteredProfiles;
-        _avatarProviders = avatarProviders;
+        _myClasses = myClasses;
+        _classNameByCode = classNameByCode;
+        _dataReady = true;
+        _lastSyncTime = DateTime.now();
       });
       widget.onReady?.call();
     } catch (e) {
@@ -377,11 +450,7 @@ class _ContactsPageState extends State<ContactsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(loc.t('班级通讯录', 'Class Contacts'),
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.bold)),
+        title: Text(loc.t('通讯录', 'Contacts')),
         backgroundColor: Colors.transparent,
         elevation: 0,
         titleSpacing: 0,
@@ -404,31 +473,154 @@ class _ContactsPageState extends State<ContactsPage> {
               )
             : const SizedBox.shrink(),
         centerTitle: false,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                dividerColor: Colors.transparent,
+                labelStyle:
+                    tt.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                unselectedLabelStyle: tt.titleMedium,
+                indicatorSize: TabBarIndicatorSize.label,
+                tabs: [
+                  Tab(text: loc.t('全部', 'All')),
+                  Tab(text: loc.t('我的班级', 'My Class')),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
-      body: Stack(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+          _buildContactsList(cs, tt, loc),
+          _buildClassView(cs, tt, loc),
+        ],
+      ),
+      floatingActionButton:
+          _tabController.index == 0 ? _buildFab(context, loc) : null,
+    );
+  }
+
+  Widget _buildFab(BuildContext context, LocaleProvider loc) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        AnimatedOpacity(
+          opacity: _showFabMenu ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeOutCubic,
+          child: AnimatedScale(
+            scale: _showFabMenu ? 1.0 : 0.8,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutBack,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (_status.trim().isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.errorContainer,
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: Text(_status,
-                        style: TextStyle(color: cs.onErrorContainer)),
+                FloatingActionButton.extended(
+                  heroTag: 'fab_add_contact',
+                  onPressed: _showFabMenu
+                      ? () {
+                          setState(() => _showFabMenu = false);
+                          _openAddContactPicker();
+                        }
+                      : null,
+                  icon: const Icon(Icons.person_add),
+                  label: Text(loc.t('添加联系人', 'Add Contact')),
+                  tooltip: loc.t('添加通讯录', 'Add Contact'),
+                  elevation: 2,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.secondaryContainer,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onSecondaryContainer,
+                  shape: const StadiumBorder(),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.extended(
+                  heroTag: 'fab_edit_profile',
+                  onPressed: _showFabMenu
+                      ? () {
+                          setState(() => _showFabMenu = false);
+                          Navigator.of(context).push(
+                            AppSlidePageRoute(
+                              builder: (_) =>
+                                  ProfilePage(session: widget.session),
+                            ),
+                          );
+                        }
+                      : null,
+                  icon: const Icon(Icons.edit),
+                  label: Text(loc.t('修改信息', 'Edit Profile')),
+                  tooltip: loc.t('更改个人信息', 'Edit Profile'),
+                  elevation: 2,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.tertiaryContainer,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onTertiaryContainer,
+                  shape: const StadiumBorder(),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+        FloatingActionButton(
+          heroTag: 'fab_main',
+          onPressed: () {
+            setState(() {
+              _showFabMenu = !_showFabMenu;
+            });
+          },
+          elevation: 2,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+          shape: const CircleBorder(),
+          tooltip: loc.t('菜单', 'Menu'),
+          child: AnimatedRotation(
+            turns: _showFabMenu ? 0.125 : 0, // Rotate 45 degrees
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutCubic,
+            child: const Icon(Icons.add),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContactsList(ColorScheme cs, TextTheme tt, LocaleProvider loc) {
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: [
+              if (_status.trim().isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer,
+                    borderRadius: BorderRadius.circular(28),
                   ),
-                Expanded(
+                  child: Text(_status,
+                      style: TextStyle(color: cs.onErrorContainer)),
+                ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => _refresh(forceNetwork: true),
                   child: (_profiles.isEmpty && !_loading)
                       ? Center(
                           child: Text(loc.t('暂无联系人', 'No contacts'),
                               style: tt.bodyLarge))
                       : (_profiles.isEmpty && _loading)
-                          ? const SizedBox.shrink()
+                          ? const Center(child: CircularProgressIndicator())
                           : ListView.builder(
                               padding:
                                   const EdgeInsets.only(top: 8, bottom: 80),
@@ -436,7 +628,11 @@ class _ContactsPageState extends State<ContactsPage> {
                               itemBuilder: (context, index) {
                                 final profile = _profiles[index];
                                 final isTeacher = profile.role == 'teacher';
-                                final avatar = _avatarProviders[profile.id];
+                                final resolvedAvatarPath =
+                                    _resolveAvatarUrlOrPath(profile.avatar) ??
+                                        '';
+                                final avatar =
+                                    _getAvatarProvider(resolvedAvatarPath);
 
                                 return Container(
                                   key: ValueKey(profile.id),
@@ -459,17 +655,14 @@ class _ContactsPageState extends State<ContactsPage> {
                                             width: 56,
                                             height: 56,
                                             decoration: BoxDecoration(
-                                              color: isTeacher
-                                                  ? cs.secondaryContainer
-                                                  : cs.primaryContainer,
+                                              color: Colors.white,
                                               borderRadius:
                                                   BorderRadius.circular(16),
-                                              image: avatar != null
-                                                  ? DecorationImage(
-                                                      image: avatar,
-                                                      fit: BoxFit.cover,
-                                                    )
-                                                  : null,
+                                              border: Border.all(
+                                                color: Colors.grey.shade200,
+                                                width: 1,
+                                              ),
+                                              image: avatar,
                                             ),
                                             alignment: Alignment.center,
                                             child: avatar == null
@@ -484,8 +677,6 @@ class _ContactsPageState extends State<ContactsPage> {
                                                       color: isTeacher
                                                           ? cs.onSecondaryContainer
                                                           : cs.onPrimaryContainer,
-                                                      fontWeight:
-                                                          FontWeight.bold,
                                                     ),
                                                   )
                                                 : null,
@@ -498,15 +689,11 @@ class _ContactsPageState extends State<ContactsPage> {
                                               children: [
                                                 Text(
                                                     profile.displayWithRealName,
-                                                    style: tt.titleMedium
-                                                        ?.copyWith(
-                                                            fontWeight:
-                                                                FontWeight
-                                                                    .bold)),
+                                                    style: tt.titleMedium),
                                                 Text(
                                                     isTeacher
                                                         ? '${loc.t('工号', 'Staff ID')}: ${profile.staffNo}'
-                                                        : '${loc.t('学号', 'Student ID')}: ${profile.studentNo}',
+                                                        : '${loc.t('班级', 'Class')}: ${profile.classCode.isEmpty ? loc.t('未填写', 'Not set') : (_classNameByCode[profile.classCode.trim()] ?? profile.classCode)}',
                                                     style: tt.bodySmall?.copyWith(
                                                         color: cs
                                                             .onSurfaceVariant)),
@@ -558,97 +745,114 @@ class _ContactsPageState extends State<ContactsPage> {
                               },
                             ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          if (_loading)
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: LinearProgressIndicator(),
-            ),
-        ],
-      ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClassView(ColorScheme cs, TextTheme tt, LocaleProvider loc) {
+    if (_loading && _myClasses.isEmpty)
+      return const Center(child: CircularProgressIndicator());
+    if (_myClasses.isEmpty) {
+      return Center(child: Text(loc.t('暂无班级信息', 'No class info')));
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _refresh(forceNetwork: true),
+      child: Column(
         children: [
-          AnimatedOpacity(
-            opacity: _showFabMenu ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeOutCubic,
-            child: AnimatedScale(
-              scale: _showFabMenu ? 1.0 : 0.8,
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeOutBack,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+          if (_lastSyncTime != null &&
+              widget.session.cli == null) // Check if offline/local mode
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  FloatingActionButton.extended(
-                    heroTag: 'fab_add_contact',
-                    onPressed: _showFabMenu
-                        ? () {
-                            setState(() => _showFabMenu = false);
-                            _openAddContactPicker();
-                          }
-                        : null,
-                    icon: const Icon(Icons.person_add),
-                    label: Text(loc.t('添加联系人', 'Add Contact')),
-                    tooltip: loc.t('添加通讯录', 'Add Contact'),
-                    elevation: 2,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.secondaryContainer,
-                    foregroundColor:
-                        Theme.of(context).colorScheme.onSecondaryContainer,
-                    shape: const StadiumBorder(),
+                  Icon(Icons.cloud_off,
+                      size: 14,
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${loc.t('离线缓存 • 上次同步于', 'Offline cache • Last synced at')} ${_lastSyncTime!.hour.toString().padLeft(2, '0')}:${_lastSyncTime!.minute.toString().padLeft(2, '0')}',
+                    style: tt.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.6)),
                   ),
-                  const SizedBox(height: 8),
-                  FloatingActionButton.extended(
-                    heroTag: 'fab_edit_profile',
-                    onPressed: _showFabMenu
-                        ? () {
-                            setState(() => _showFabMenu = false);
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    ProfilePage(session: widget.session),
-                              ),
-                            );
-                          }
-                        : null,
-                    icon: const Icon(Icons.edit),
-                    label: Text(loc.t('修改信息', 'Edit Profile')),
-                    tooltip: loc.t('更改个人信息', 'Edit Profile'),
-                    elevation: 2,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.tertiaryContainer,
-                    foregroundColor:
-                        Theme.of(context).colorScheme.onTertiaryContainer,
-                    shape: const StadiumBorder(),
-                  ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
-          ),
-          FloatingActionButton(
-            heroTag: 'fab_main',
-            onPressed: () {
-              setState(() {
-                _showFabMenu = !_showFabMenu;
-              });
-            },
-            elevation: 2,
-            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-            foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-            shape: const CircleBorder(),
-            tooltip: loc.t('菜单', 'Menu'),
-            child: AnimatedRotation(
-              turns: _showFabMenu ? 0.125 : 0, // Rotate 45 degrees
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeOutCubic,
-              child: const Icon(Icons.add),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _myClasses.length,
+              itemBuilder: (context, index) {
+                final cls = _myClasses[index];
+                return Card(
+                  elevation: 0,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    side: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.5)),
+                  ),
+                  child: InkWell(
+                    onTap: () => _showClassMembers(cls),
+                    borderRadius: BorderRadius.circular(24),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(Icons.group_outlined,
+                                    color: cs.onPrimaryContainer, size: 28),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(cls['name'],
+                                        style: tt.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.bold)),
+                                    Text(
+                                        '${cls['count']} ${loc.t('人', 'People')}',
+                                        style: tt.bodyMedium?.copyWith(
+                                            color: cs.onSurfaceVariant)),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right_rounded,
+                                  color: cs.onSurfaceVariant),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline,
+                                  size: 16, color: cs.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                  '${loc.t('班主任', 'Head Teacher')}: ${cls['headTeacher']}',
+                                  style: tt.bodySmall),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -656,10 +860,102 @@ class _ContactsPageState extends State<ContactsPage> {
     );
   }
 
+  void _showClassMembers(Map<String, dynamic> cls) {
+    final loc = Provider.of<LocaleProvider>(context, listen: false);
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    final classMembers =
+        _profiles.where((p) => p.classCode.contains(cls['code'])).toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: cs.surfaceContainerLowest,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: MediaQuery.of(context).size.height * 0.85,
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(cls['name'],
+                          style: tt.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold)),
+                      Text('${classMembers.length} ${loc.t('名成员', 'Members')}',
+                          style: tt.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView.builder(
+                itemCount: classMembers.length,
+                itemBuilder: (ctx, idx) {
+                  final p = classMembers[idx];
+                  final isTeacher = p.role == 'teacher';
+                  final resolvedAvatarPath =
+                      _resolveAvatarUrlOrPath(p.avatar) ?? '';
+                  final avatar = _getAvatarProvider(resolvedAvatarPath);
+
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                    leading: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                        image: avatar,
+                      ),
+                      alignment: Alignment.center,
+                      child: avatar == null
+                          ? Text(p.displayName.isNotEmpty
+                              ? p.displayName.substring(0, 1)
+                              : '?')
+                          : null,
+                    ),
+                    title: Text(p.displayName),
+                    subtitle: Text(isTeacher
+                        ? loc.t('教师', 'Teacher')
+                        : (p.studentNo.isNotEmpty ? p.studentNo : p.staffNo)),
+                    onTap: () => _showContactDetails(context, p, cs, tt),
+                    trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showContactDetails(
       BuildContext context, Profile p, ColorScheme cs, TextTheme tt) {
     final loc = Provider.of<LocaleProvider>(context, listen: false);
-    final avatar = _avatarProviders[p.id];
+    final resolvedAvatarPath = _resolveAvatarUrlOrPath(p.avatar) ?? '';
+    final avatar = _getAvatarProvider(resolvedAvatarPath);
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -680,11 +976,10 @@ class _ContactsPageState extends State<ContactsPage> {
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: cs.secondaryContainer,
-                    shape: BoxShape.circle,
-                    image: avatar != null
-                        ? DecorationImage(image: avatar, fit: BoxFit.cover)
-                        : null,
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade200),
+                    image: avatar,
                   ),
                   alignment: Alignment.center,
                   child: avatar == null
@@ -693,7 +988,7 @@ class _ContactsPageState extends State<ContactsPage> {
                               ? p.displayName.substring(0, 1).toUpperCase()
                               : '?',
                           style: TextStyle(
-                            color: cs.onSecondaryContainer,
+                            color: cs.primary,
                             fontWeight: FontWeight.bold,
                             fontSize: 32,
                           ),
@@ -749,7 +1044,8 @@ class _ContactsPageState extends State<ContactsPage> {
                       loc.t('班级', 'Class'),
                       p.classCode.isEmpty
                           ? loc.t('未填写', 'Not set')
-                          : p.classCode,
+                          : (_classNameByCode[p.classCode.trim()] ??
+                              p.classCode),
                       cs,
                       tt),
                 _buildProfileItem(
