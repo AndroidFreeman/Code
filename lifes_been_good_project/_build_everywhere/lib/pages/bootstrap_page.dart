@@ -105,6 +105,17 @@ class _BootstrapPageState extends State<BootstrapPage> {
                     onPressed: _running ? null : _run,
                     child: Text(loc.t('重试', 'Retry')),
                   ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _running
+                        ? null
+                        : () async {
+                            final bootRes = await Bootstrapper.runFallback();
+                            if (!mounted) return;
+                            widget.onReady(bootRes);
+                          },
+                    child: Text(loc.t('进入本地模式', 'Enter Local Mode')),
+                  ),
                 ],
               ),
             ),
