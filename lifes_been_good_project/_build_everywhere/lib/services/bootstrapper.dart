@@ -7,6 +7,8 @@ import 'android_native_installer.dart';
 import 'native_cli.dart';
 import 'native_features.dart';
 
+import 'api_config.dart';
+
 class BootstrapResult {
   final bool ok;
   final String message;
@@ -49,7 +51,8 @@ class Bootstrapper {
     }
 
     progress('初始化数据结构...');
-    final features = NativeFeatures(dataDir: data.path, nativeLibDir: nativeLibDir);
+    final features =
+        NativeFeatures(dataDir: data.path, nativeLibDir: nativeLibDir);
     Map<String, dynamic> res;
     if (await features.hasFeature('system_init')) {
       res = await features.systemInit(seed: false);
@@ -68,7 +71,7 @@ class Bootstrapper {
           nativeLibDir: nativeLibDir,
         );
       }
-      
+
       final actualCliPath = (Platform.isAndroid && nativeLibDir != null)
           ? p.join(nativeLibDir, 'libcampus_cli.so')
           : cliFile.path;
@@ -111,6 +114,22 @@ class Bootstrapper {
       dataDir: data.path,
       cliPath: cliFile.path,
       nativeLibDir: nativeLibDir,
+    );
+  }
+
+  static Future<BootstrapResult> runFallback() async {
+    final data = await AppPaths.dataDir();
+    final cliFile = await AppPaths.defaultCliFile();
+
+    // In local fallback mode, we force disable cloud usage
+    ApiConfig.instance.useCloud = false;
+
+    return BootstrapResult(
+      ok: true,
+      message: '本地模式',
+      messageEn: 'Local Mode',
+      dataDir: data.path,
+      cliPath: cliFile.path,
     );
   }
 
