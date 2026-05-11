@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'api_config.dart';
 
 class NativeFeatures {
   final String dataDir;
@@ -18,11 +19,14 @@ class NativeFeatures {
   }
 
   Future<bool> hasFeature(String baseName) async {
+    if (ApiConfig.instance.useCloud) return true;
     final exePath = _featurePath(baseName);
     return File(exePath).exists();
   }
 
   Future<Map<String, dynamic>> listStudents() async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/students');
     final exePath = _featurePath('students_list');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -52,6 +56,16 @@ class NativeFeatures {
     required String phone,
     required String position,
   }) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance.post('/api/students', {
+        'id': id,
+        'student_no': studentNo,
+        'full_name': fullName,
+        'class_code': classCode,
+        'phone': phone,
+        'position': position,
+      });
+    }
     final exePath = _featurePath('students_insert');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -75,6 +89,10 @@ class NativeFeatures {
 
   Future<Map<String, dynamic>> deleteStudent(
       {required String fullName, required String studentNo}) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance
+          .delete('/api/students?full_name=$fullName&student_no=$studentNo');
+    }
     final exePath = _featurePath('students_delete');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -97,6 +115,8 @@ class NativeFeatures {
   }
 
   Future<Map<String, dynamic>> systemInit({required bool seed}) async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/system/init?seed=$seed');
     final exePath = _featurePath('system_init');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -116,7 +136,13 @@ class NativeFeatures {
     return _decode(res);
   }
 
-  Future<Map<String, dynamic>> listProfiles() async {
+  Future<Map<String, dynamic>> listProfiles({List<String>? classCodes}) async {
+    if (ApiConfig.instance.useCloud) {
+      final path = (classCodes != null && classCodes.isNotEmpty)
+          ? '/api/profiles?class_codes=${classCodes.join(",")}'
+          : '/api/profiles';
+      return ApiConfig.instance.get(path);
+    }
     final exePath = _featurePath('profiles_list');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -131,10 +157,30 @@ class NativeFeatures {
 
     final res = await Process.run(exePath, [dataDir],
         stdoutEncoding: utf8, stderrEncoding: utf8);
-    return _decode(res);
+    final decoded = _decode(res);
+
+    // Backend-side filtering simulation for security
+    if (decoded['ok'] == true && classCodes != null && classCodes.isNotEmpty) {
+      final data = decoded['data'] as Map<String, dynamic>;
+      final items = (data['items'] as List?) ?? [];
+      final filteredItems = items.where((item) {
+        final itemClass = (item['class_code'] ?? '').toString().trim();
+        if (item['role'] == 'teacher') {
+          final teacherClasses =
+              itemClass.split('|').map((e) => e.trim()).toList();
+          return teacherClasses.any((c) => classCodes.contains(c));
+        }
+        return classCodes.contains(itemClass);
+      }).toList();
+      data['items'] = filteredItems;
+    }
+
+    return decoded;
   }
 
   Future<Map<String, dynamic>> listCourses() async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/courses');
     final exePath = _featurePath('courses_list');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -161,6 +207,17 @@ class NativeFeatures {
     required String credits,
     required String notes,
   }) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance.post('/api/courses', {
+        'id': id,
+        'course_name': name,
+        'teacher_profile_id': teacherId,
+        'term_code': term,
+        'color': color,
+        'credits': credits,
+        'notes': notes,
+      });
+    }
     final exePath = _featurePath('courses_insert');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -182,7 +239,15 @@ class NativeFeatures {
     return _decode(res);
   }
 
+  Future<Map<String, dynamic>> listClasses() async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/classes');
+    return csvOp(action: 'read', file: 'classes.csv');
+  }
+
   Future<Map<String, dynamic>> listTimetable() async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/timetable');
     final exePath = _featurePath('timetable_list');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -214,6 +279,22 @@ class NativeFeatures {
     required bool isLocked,
     required String weeks,
   }) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance.post('/api/timetable', {
+        'id': id,
+        'owner_profile_id': owner,
+        'weekday': weekday,
+        'start_period': startPeriod,
+        'end_period': endPeriod,
+        'start_time': startTime,
+        'end_time': endTime,
+        'course_id': courseId,
+        'location': location,
+        'created_by_profile_id': creator,
+        'is_locked': isLocked,
+        'weeks': weeks,
+      });
+    }
     final exePath = _featurePath('timetable_insert');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -250,6 +331,8 @@ class NativeFeatures {
   }
 
   Future<Map<String, dynamic>> listContacts() async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/contacts');
     final exePath = _featurePath('contacts_list');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -268,6 +351,8 @@ class NativeFeatures {
   }
 
   Future<Map<String, dynamic>> listTodos() async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.get('/api/todos');
     final exePath = _featurePath('todos_list');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -287,6 +372,13 @@ class NativeFeatures {
 
   Future<Map<String, dynamic>> addTodo(
       {required String ownerProfileId, required String title}) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance.post('/api/todos', {
+        'owner_profile_id': ownerProfileId,
+        'title': title,
+        'done': false,
+      });
+    }
     final exePath = _featurePath('todos_add');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -305,6 +397,8 @@ class NativeFeatures {
   }
 
   Future<Map<String, dynamic>> toggleTodo({required String id}) async {
+    if (ApiConfig.instance.useCloud)
+      return ApiConfig.instance.put('/api/todos/$id/toggle');
     final exePath = _featurePath('todos_toggle');
     final exists = await File(exePath).exists();
     if (!exists) {
@@ -328,15 +422,27 @@ class NativeFeatures {
     int? week,
     int? period,
   }) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance.post('/api/attendance/sessions', {
+        'course_id': courseId,
+        'created_by_profile_id': createdByProfileId,
+        'week': week,
+        'period': period,
+      });
+    }
     try {
       final f = File(p.join(dataDir, 'attendance_sessions.csv'));
       if (!await f.exists()) {
-        await f.writeAsString('id,course_id,created_by_profile_id,started_at,ended_at,week,period\n');
+        await f.writeAsString(
+            'id,course_id,created_by_profile_id,started_at,ended_at,week,period\n');
       } else {
         final content = await f.readAsString();
-        if (!content.startsWith('id,course_id,created_by_profile_id,started_at,ended_at,week,period')) {
+        if (!content.startsWith(
+            'id,course_id,created_by_profile_id,started_at,ended_at,week,period')) {
           final lines = const LineSplitter().convert(content);
-          final out = <String>['id,course_id,created_by_profile_id,started_at,ended_at,week,period'];
+          final out = <String>[
+            'id,course_id,created_by_profile_id,started_at,ended_at,week,period'
+          ];
           for (var i = 1; i < lines.length; i++) {
             if (lines[i].trim().isEmpty) continue;
             out.add('${lines[i].trim()},,');
@@ -344,15 +450,24 @@ class NativeFeatures {
           await f.writeAsString('${out.join('\n')}\n');
         }
       }
-      
+
       final id = 'as_${DateTime.now().millisecondsSinceEpoch}';
-      final startedAt = '${DateTime.now().toUtc().toIso8601String().split('.').first}Z';
+      final startedAt =
+          '${DateTime.now().toUtc().toIso8601String().split('.').first}Z';
       final w = week?.toString() ?? '';
       final pStr = period?.toString() ?? '';
-      await f.writeAsString('$id,$courseId,$createdByProfileId,$startedAt,,$w,$pStr\n', mode: FileMode.append);
-      return {'ok': true, 'data': {'session_id': id, 'started_at': startedAt}};
-    } catch(e) {
-      return {'ok': false, 'error': {'message': e.toString()}};
+      await f.writeAsString(
+          '$id,$courseId,$createdByProfileId,$startedAt,,$w,$pStr\n',
+          mode: FileMode.append);
+      return {
+        'ok': true,
+        'data': {'session_id': id, 'started_at': startedAt}
+      };
+    } catch (e) {
+      return {
+        'ok': false,
+        'error': {'message': e.toString()}
+      };
     }
   }
 
@@ -362,6 +477,14 @@ class NativeFeatures {
     required String status,
     required String markedByProfileId,
   }) async {
+    if (ApiConfig.instance.useCloud) {
+      return ApiConfig.instance.post('/api/attendance/records', {
+        'session_id': sessionId,
+        'student_id': studentId,
+        'status': status,
+        'marked_by_profile_id': markedByProfileId,
+      });
+    }
     final exePath = _featurePath('attendance_record_mark');
     final exists = await File(exePath).exists();
     if (!exists) {
