@@ -3,7 +3,7 @@
  * @Github: https://github.com/AndroidFreeman
  * Now, I use my Codespace
  * @Author: Android_Freeman
- * @LastEditTime: 2026-04-27 17:23:57
+ * @LastEditTime: 2026-04-30 10:32:23
  * @FilePath: /Code/LearnDS_HBPU/_Rewrite/0.5_myString.cpp
  */
 #include<bits/stdc++.h>
@@ -42,5 +42,5 @@ int myStringIndex(myString S,myString Sub,int Length){
 }
 
 int main(){
-
+    
 }
