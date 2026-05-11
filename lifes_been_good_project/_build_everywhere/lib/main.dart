@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:animations/animations.dart';
 
 import 'pages/bootstrap_page.dart';
 import 'pages/login_page.dart';
@@ -17,7 +17,9 @@ import 'services/bootstrapper.dart';
 import 'services/local_profiles.dart';
 import 'services/native_cli.dart';
 import 'services/native_features.dart';
+import 'services/api_config.dart';
 import 'state/session.dart';
+import 'widgets/expressive_ui.dart';
 
 class LocaleProvider extends ChangeNotifier {
   Locale _locale = const Locale('zh', 'CN');
@@ -49,6 +51,15 @@ class LocaleProvider extends ChangeNotifier {
           await features.jsonOp(action: 'read', file: _settingsFileName);
       if (res['ok'] != true || res['data'] == null) return;
       final decoded = res['data'];
+
+      if (decoded is Map && decoded.containsKey('themeMode')) {
+        final modeIndex = decoded['themeMode'] as int?;
+        if (modeIndex != null &&
+            modeIndex >= 0 &&
+            modeIndex < ThemeMode.values.length) {
+          _themeMode = ThemeMode.values[modeIndex];
+        }
+      }
       if (decoded is! Map) return;
 
       if (decoded.containsKey('enableQuickRollCall')) {
@@ -111,30 +122,121 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final localeProvider = LocaleProvider();
   await localeProvider.load();
+  final dataDir = await AppPaths.dataDir();
+  await ApiConfig.instance.load(dataDir.path);
+  final cliFile = await AppPaths.defaultCliFile();
+  final nativeLibDir = Platform.isAndroid
+      ? await AndroidNativeInstaller.getNativeLibraryDir()
+      : null;
+  final initialBoot = BootstrapResult(
+    ok: true,
+    message: '',
+    dataDir: dataDir.path,
+    cliPath: cliFile.path,
+    nativeLibDir: nativeLibDir,
+  );
+  final initialSession = _tryFastAutoLogin(initialBoot);
   runApp(
     ChangeNotifierProvider.value(
       value: localeProvider,
-      child: const LifeSystemApp(),
+      child: LifeSystemApp(
+        initialBoot: initialBoot,
+        initialSession: initialSession,
+      ),
     ),
   );
 }
 
+Session? _tryFastAutoLogin(BootstrapResult boot) {
+  try {
+    final profile = LocalProfiles.loadAutoLoginProfileFast(
+      dataDir: boot.dataDir,
+    );
+    if (profile == null) return null;
+
+    final position = LocalProfiles.loadStudentPositionFast(
+      dataDir: boot.dataDir,
+      profile: profile,
+    );
+    final features = NativeFeatures(
+      dataDir: boot.dataDir,
+      nativeLibDir: boot.nativeLibDir,
+    );
+    final cli = File(boot.cliPath).existsSync()
+        ? NativeCli(exePath: boot.cliPath, dataDir: boot.dataDir)
+        : null;
+    return Session(
+      cli: cli,
+      features: features,
+      dataDir: boot.dataDir,
+      profile: profile.copyWith(position: position),
+    )
+      ..preloadAll()
+      ..startRealtimeSync();
+  } catch (_) {
+    return null;
+  }
+}
+
 class LifeSystemApp extends StatefulWidget {
-  const LifeSystemApp({super.key});
+  final BootstrapResult? initialBoot;
+  final Session? initialSession;
+
+  const LifeSystemApp({
+    super.key,
+    this.initialBoot,
+    this.initialSession,
+  });
 
   @override
   State<LifeSystemApp> createState() => _LifeSystemAppState();
 }
 
 class _LifeSystemAppState extends State<LifeSystemApp> {
-  Session? _session;
-  BootstrapResult? _boot;
-  bool _autoLoginTried = false;
+  late Session? _session = widget.initialSession;
+  late BootstrapResult? _boot = widget.initialBoot;
+  bool _bootstrapping = false;
+  bool _startupSettled = false;
   SystemUiOverlayStyle? _appliedOverlayStyle;
+  late final DateTime _startupBeganAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _startupBeganAt = DateTime.now();
+    _startupSettled = false;
+    unawaited(_ensureBootReady());
+  }
+
+  Future<void> _ensureBootReady() async {
+    if (_bootstrapping) return;
+    _bootstrapping = true;
+    try {
+      final result = await Bootstrapper.run();
+      if (!mounted) return;
+      setState(() {
+        _boot = result;
+      });
+      if (_session == null && result.ok) {
+        await _tryAutoLogin(result);
+      }
+    } catch (_) {
+    } finally {
+      final elapsed = DateTime.now().difference(_startupBeganAt);
+      const minCoverDuration = Duration(milliseconds: 100);
+      if (elapsed < minCoverDuration) {
+        await Future<void>.delayed(minCoverDuration - elapsed);
+      }
+      if (mounted) {
+        setState(() {
+          _startupSettled = true;
+        });
+      }
+      _bootstrapping = false;
+    }
+  }
 
   Future<void> _tryAutoLogin(BootstrapResult boot) async {
-    if (_autoLoginTried) return;
-    _autoLoginTried = true;
     try {
       final profile = await LocalProfiles.loadAutoLoginProfile(
         dataDir: boot.dataDir,
@@ -150,13 +252,13 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
         dataDir: boot.dataDir,
         nativeLibDir: boot.nativeLibDir,
       );
-      NativeCli? cli;
-      if (File(boot.cliPath).existsSync()) {
-        cli = NativeCli(exePath: boot.cliPath, dataDir: boot.dataDir);
-      }
+      final cli = File(boot.cliPath).existsSync()
+          ? NativeCli(exePath: boot.cliPath, dataDir: boot.dataDir)
+          : null;
 
       if (!mounted) return;
       setState(() {
+        _session?.dispose();
         _session = Session(
           cli: cli,
           features: features,
@@ -164,6 +266,8 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           profile: profile.copyWith(position: position),
         );
       });
+      await _session?.preloadAll();
+      _session?.startRealtimeSync();
     } catch (_) {
       await LocalProfiles.clearAutoLogin(boot.dataDir);
     }
@@ -237,6 +341,23 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
       child: MaterialApp(
         title: "Life's Been Good System",
         debugShowCheckedModeBanner: false,
+        showSemanticsDebugger: false,
+        builder: (context, child) {
+          Widget finalChild = child ?? const SizedBox.shrink();
+          if (!kIsWeb && Platform.isWindows) {
+            finalChild = ExcludeSemantics(child: finalChild);
+          }
+          return Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFF8F9FF), Color(0xFFF0F2F8)],
+              ),
+            ),
+            child: finalChild,
+          );
+        },
         locale: localeProvider.locale,
         themeMode: localeProvider.themeMode,
         localizationsDelegates: const [
@@ -249,6 +370,15 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           Locale('en', 'US'),
         ],
         theme: baseTheme.copyWith(
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.iOS: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.macOS: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.windows: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.linux: AppSlidePageTransitionsBuilder(),
+            },
+          ),
           textTheme: baseTheme.textTheme.apply(
             bodyColor: const Color(0xFF1C1B1F),
             displayColor: const Color(0xFF1C1B1F),
@@ -261,6 +391,11 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             foregroundColor: baseTheme.colorScheme.onSurface,
+            titleTextStyle: baseTheme.textTheme.titleLarge?.copyWith(
+              fontSize: 20,
+              fontWeight: FontWeight.w400,
+              color: baseTheme.colorScheme.onSurface,
+            ),
             systemOverlayStyle: const SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
               statusBarIconBrightness: Brightness.dark,
@@ -289,7 +424,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
           ),
           navigationDrawerTheme: NavigationDrawerThemeData(
-            backgroundColor: Colors.white.withValues(alpha: 204),
+            backgroundColor: baseTheme.colorScheme.surface,
             indicatorColor: baseTheme.colorScheme.secondaryContainer,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(expressiveRadius),
@@ -341,10 +476,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
                 ),
               ),
               side: WidgetStatePropertyAll(
-                BorderSide(
-                  color: baseTheme.colorScheme.outlineVariant
-                      .withValues(alpha: 128),
-                ),
+                BorderSide.none,
               ),
               backgroundColor: WidgetStateProperty.resolveWith(
                 (states) {
@@ -381,7 +513,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               elevation: 0,
               backgroundColor: baseTheme.colorScheme.primaryContainer,
               foregroundColor: baseTheme.colorScheme.onPrimaryContainer,
-              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 20),
+              shadowColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             ).copyWith(
@@ -403,11 +535,10 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               backgroundColor: baseTheme.colorScheme.surfaceContainerLow,
               foregroundColor: baseTheme.colorScheme.onSurface,
               side: BorderSide(
-                color:
-                    baseTheme.colorScheme.outlineVariant.withValues(alpha: 128),
+                color: Colors.transparent,
               ),
               elevation: 0,
-              shadowColor: baseTheme.colorScheme.shadow.withValues(alpha: 16),
+              shadowColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
             ).copyWith(
               shape: WidgetStateProperty.resolveWith<OutlinedBorder>(
@@ -439,6 +570,19 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: baseTheme.colorScheme.surfaceContainer,
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            floatingLabelStyle: TextStyle(
+              color: baseTheme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+            labelStyle: TextStyle(
+              color: baseTheme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+            hintStyle: TextStyle(
+              color:
+                  baseTheme.colorScheme.onSurfaceVariant.withValues(alpha: 150),
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(20),
               borderSide: BorderSide.none,
@@ -449,11 +593,10 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(20),
-              borderSide:
-                  BorderSide(color: baseTheme.colorScheme.primary, width: 2),
+              borderSide: BorderSide.none,
             ),
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           ),
           dialogTheme: DialogThemeData(
             shape: RoundedRectangleBorder(
@@ -473,23 +616,24 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               shape: WidgetStatePropertyAll(RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               )),
-              elevation: const WidgetStatePropertyAll(4),
+              elevation: const WidgetStatePropertyAll(0),
+              shadowColor: const WidgetStatePropertyAll(Colors.transparent),
+              surfaceTintColor: WidgetStatePropertyAll(
+                baseTheme.colorScheme.surfaceContainerLowest,
+              ),
             ),
           ),
         ),
-        builder: (context, child) {
-          return Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFFF8F9FF), Color(0xFFF0F2F8)],
-              ),
-            ),
-            child: child,
-          );
-        },
         darkTheme: darkTheme.copyWith(
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.iOS: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.macOS: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.windows: AppSlidePageTransitionsBuilder(),
+              TargetPlatform.linux: AppSlidePageTransitionsBuilder(),
+            },
+          ),
           scaffoldBackgroundColor: darkTheme.colorScheme.surface,
           appBarTheme: AppBarTheme(
             centerTitle: false,
@@ -498,6 +642,11 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             foregroundColor: darkTheme.colorScheme.onSurface,
+            titleTextStyle: darkTheme.textTheme.titleLarge?.copyWith(
+              fontSize: 20,
+              fontWeight: FontWeight.w400,
+              color: darkTheme.colorScheme.onSurface,
+            ),
             systemOverlayStyle: const SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
               statusBarIconBrightness: Brightness.light,
@@ -526,7 +675,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
           ),
           navigationDrawerTheme: NavigationDrawerThemeData(
-            backgroundColor: Colors.black.withValues(alpha: 204),
+            backgroundColor: darkTheme.colorScheme.surface,
             indicatorColor: darkTheme.colorScheme.secondaryContainer,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(expressiveRadius),
@@ -540,9 +689,9 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
             ),
           ),
           floatingActionButtonTheme: FloatingActionButtonThemeData(
-            elevation: 1,
-            hoverElevation: 2,
-            focusElevation: 2,
+            elevation: 0,
+            hoverElevation: 0,
+            focusElevation: 0,
             backgroundColor: darkTheme.colorScheme.primaryContainer,
             foregroundColor: darkTheme.colorScheme.onPrimaryContainer,
             splashColor: darkTheme.colorScheme.primary.withValues(alpha: 26),
@@ -578,10 +727,7 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
                 ),
               ),
               side: WidgetStatePropertyAll(
-                BorderSide(
-                  color: darkTheme.colorScheme.outlineVariant
-                      .withValues(alpha: 128),
-                ),
+                BorderSide.none,
               ),
               backgroundColor: WidgetStateProperty.resolveWith(
                 (states) {
@@ -601,52 +747,194 @@ class _LifeSystemAppState extends State<LifeSystemApp> {
               ),
             ),
           ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: darkTheme.colorScheme.surfaceContainer,
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            floatingLabelStyle: TextStyle(
+              color: darkTheme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+            labelStyle: TextStyle(
+              color: darkTheme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+            hintStyle: TextStyle(
+              color:
+                  darkTheme.colorScheme.onSurfaceVariant.withValues(alpha: 150),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          ),
         ),
-        home: PageTransitionSwitcher(
-          duration: const Duration(milliseconds: 300),
-          transitionBuilder: (Widget child, Animation<double> primaryAnimation,
-              Animation<double> secondaryAnimation) {
-            return FadeThroughTransition(
-              animation: primaryAnimation,
-              secondaryAnimation: secondaryAnimation,
-              child: child,
+        home: AnimatedSwitcher(
+          duration: kAppRouteTransitionDuration,
+          switchInCurve: kAppMotionCurve,
+          switchOutCurve: kAppMotionCurve,
+          layoutBuilder: (currentChild, previousChildren) {
+            return Stack(
+              children: [
+                ...previousChildren,
+                if (currentChild != null) currentChild,
+              ],
             );
           },
-          child: _boot == null
-              ? BootstrapPage(
-                  key: const ValueKey('boot'),
-                  onReady: (r) {
-                    setState(() {
-                      _boot = r;
-                    });
-                    _tryAutoLogin(r);
-                  },
-                )
-              : _session == null
-                  ? LoginPage(
-                      key: const ValueKey('login'),
-                      dataDir: _boot!.dataDir,
-                      cliPath: _boot!.cliPath,
-                      nativeLibDir: _boot!.nativeLibDir,
-                      onLoggedIn: (s) {
+          transitionBuilder: (child, animation) {
+            final curved =
+                CurvedAnimation(parent: animation, curve: kAppMotionCurve);
+            final isStartupCover =
+                (child.key as ValueKey?)?.value == 'startup-cover';
+            if (isStartupCover) {
+              return FadeTransition(
+                opacity: curved,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.96, end: 1.0).animate(curved),
+                  child: child,
+                ),
+              );
+            }
+            return FadeTransition(
+              opacity: curved,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.0, 0.06),
+                  end: Offset.zero,
+                ).animate(curved),
+                child: child,
+              ),
+            );
+          },
+          child: !_startupSettled
+              ? const _StartupCoverPage(key: ValueKey('startup-cover'))
+              : (_boot != null && _boot!.ok == false)
+                  ? BootstrapPage(
+                      key: const ValueKey('boot-error'),
+                      onReady: (r) {
                         setState(() {
-                          _session = s;
+                          _boot = r;
                         });
+                        unawaited(_tryAutoLogin(r));
                       },
                     )
-                  : ShellPage(
-                      key: const ValueKey('shell'),
-                      session: _session!,
-                      onLogout: () {
-                        final boot = _boot;
-                        if (boot != null) {
-                          LocalProfiles.clearAutoLogin(boot.dataDir);
-                        }
-                        setState(() {
-                          _session = null;
-                        });
-                      },
+                  : _boot == null
+                      ? BootstrapPage(
+                          key: const ValueKey('boot'),
+                          onReady: (r) {
+                            setState(() {
+                              _boot = r;
+                            });
+                            unawaited(_tryAutoLogin(r));
+                          },
+                        )
+                      : _session == null
+                          ? LoginPage(
+                              key: const ValueKey('login'),
+                              dataDir: _boot!.dataDir,
+                              cliPath: _boot!.cliPath,
+                              nativeLibDir: _boot!.nativeLibDir,
+                              onLoggedIn: (s) {
+                                setState(() {
+                                  _session?.dispose();
+                                  _session = s;
+                                });
+                                _session?.startRealtimeSync();
+                              },
+                            )
+                          : ShellPage(
+                              key: const ValueKey('shell'),
+                              session: _session!,
+                              onLogout: () {
+                                final boot = _boot;
+                                if (boot != null) {
+                                  LocalProfiles.clearAutoLogin(boot.dataDir);
+                                }
+                                setState(() {
+                                  _session?.dispose();
+                                  _session = null;
+                                });
+                              },
+                            ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StartupCoverPage extends StatelessWidget {
+  const _StartupCoverPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: cs.surface,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.surface,
+              cs.surfaceContainerLow,
+              cs.surfaceContainer,
+            ],
+          ),
+        ),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.92, end: 1.0),
+          duration: const Duration(milliseconds: 420),
+          curve: kAppMotionCurve,
+          builder: (context, value, child) {
+            return Opacity(
+              opacity: ((value - 0.92) / 0.08).clamp(0.0, 1.0),
+              child: Transform.scale(scale: value, child: child),
+            );
+          },
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 180),
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 160),
                     ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: 88,
+                      height: 88,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  "Life's Been Good",
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
