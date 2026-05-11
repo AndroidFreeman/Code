@@ -22,6 +22,11 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   image_cropper: ^8.0.2
   image_picker: ^1.1.2
+  camera: ^0.12.0+1
+  http: ^1.6.0
+  google_mlkit_face_detection: ^0.13.2
+  lpinyin: ^2.0.3
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
