@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../main.dart';
 import '../models/student.dart';
+import '../services/local_profiles.dart';
 import '../state/session.dart';
+import '../widgets/expressive_ui.dart';
 
 class StudentsPage extends StatefulWidget {
   final Session session;
@@ -18,31 +22,48 @@ class _StudentsPageState extends State<StudentsPage> {
   bool _loading = true;
   String _status = '';
   final _query = TextEditingController();
-  bool _dataReady = true;
   List<Student> _items = const [];
+  StreamSubscription<SessionDataChange>? _dataChangeSub;
 
   @override
   void initState() {
     super.initState();
-    widget.session.addListener(_onSessionChanged);
+
+    if (widget.session.preloadedData['students'] != null) {
+      try {
+        final raw = ((widget.session.preloadedData['students'] as Map)['items']
+                as List?) ??
+            [];
+        _items = raw
+            .map((e) => Student.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
+        _items.sort((a, b) => a.studentNo.compareTo(b.studentNo));
+        _loading = false;
+      } catch (_) {}
+    }
+
+    _dataChangeSub = widget.session
+        .watchDataChanges({'students', 'classes', 'profiles'}).listen((event) {
+      if (mounted) {
+        _refresh(isBackground: true, forceNetwork: event.remote);
+      }
+    });
     _refresh();
   }
 
   @override
   void dispose() {
-    widget.session.removeListener(_onSessionChanged);
+    _dataChangeSub?.cancel();
     _query.dispose();
     super.dispose();
   }
 
-  void _onSessionChanged() {
-    if (mounted) {
-      _refresh(isBackground: true);
-    }
-  }
+  String _lastSignature = '';
 
   Future<void> _refresh(
-      {bool isBackground = false, bool silent = false}) async {
+      {bool isBackground = false,
+      bool silent = false,
+      bool forceNetwork = false}) async {
     if (!widget.session.canViewStudents) {
       final loc = Provider.of<LocaleProvider>(context, listen: false);
       setState(() {
@@ -54,23 +75,15 @@ class _StudentsPageState extends State<StudentsPage> {
     }
 
     final loc = Provider.of<LocaleProvider>(context, listen: false);
-    if (!isBackground && _items.isEmpty && !silent) {
-      setState(() {
-        _loading = true;
-        _status = '';
-      });
-    }
-
-    if (silent) {
-      setState(() {
-        _loading = true; // Show top indicator
-        _status = '';
-      });
-    }
 
     Map<String, dynamic> res;
-    if (await widget.session.features.hasFeature('students_list')) {
+    if (!forceNetwork && widget.session.preloadedData['students'] != null) {
+      res = {'ok': true, 'data': widget.session.preloadedData['students']};
+    } else if (await widget.session.features.hasFeature('students_list')) {
       res = await widget.session.features.listStudents();
+      if (res['ok'] == true) {
+        widget.session.preloadedData['students'] = res['data'];
+      }
     } else {
       final cli = widget.session.cli;
       if (cli == null) {
@@ -82,6 +95,9 @@ class _StudentsPageState extends State<StudentsPage> {
         return;
       }
       res = await cli.call('students.list', {});
+      if (res['ok'] == true) {
+        widget.session.preloadedData['students'] = res['data'];
+      }
     }
     if (res['ok'] != true) {
       final msg = ((res['error'] ?? const {}) as Map)['message']?.toString() ??
@@ -99,6 +115,18 @@ class _StudentsPageState extends State<StudentsPage> {
         .map((e) => Student.fromJson((e as Map).cast<String, dynamic>()))
         .toList();
     all.sort((a, b) => a.studentNo.compareTo(b.studentNo));
+
+    final signature = all
+        .map((s) => '${s.id}:${s.fullName}:${s.studentNo}:${s.classCode}')
+        .join('|');
+    if (signature == _lastSignature) {
+      setState(() {
+        _loading = false;
+      });
+      return;
+    }
+    _lastSignature = signature;
+
     setState(() {
       _loading = false;
       _items = all;
@@ -112,49 +140,103 @@ class _StudentsPageState extends State<StudentsPage> {
     final id = TextEditingController();
     final studentNo = TextEditingController();
     final fullName = TextEditingController();
-    final classCode =
-        TextEditingController(text: widget.session.profile.classCode);
     final phone = TextEditingController();
+    var selectedClass = widget.session.profile.classCode.trim();
+    var classOptions = <Map<String, String>>[];
+    final classNameById = <String, String>{};
+    try {
+      classOptions =
+          await LocalProfiles.getAllClassesWithNames(widget.session.dataDir);
+      for (final row in classOptions) {
+        final id = (row['id'] ?? '').trim();
+        if (id.isEmpty) continue;
+        final name = (row['name'] ?? '').trim();
+        classNameById[id] = name.isEmpty ? id : name;
+      }
+    } catch (_) {}
+    if (selectedClass.isEmpty && classOptions.isNotEmpty) {
+      selectedClass = (classOptions.first['id'] ?? '').trim();
+    }
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(loc.t('新增学生', 'Add Student')),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: id,
-                  decoration: InputDecoration(
-                      labelText: loc.t('ID（如 s_003）', 'ID (e.g. s_003)'))),
-              TextField(
-                  controller: studentNo,
-                  decoration:
-                      InputDecoration(labelText: loc.t('学号', 'Student ID'))),
-              TextField(
-                  controller: fullName,
-                  decoration: InputDecoration(labelText: loc.t('姓名', 'Name'))),
-              TextField(
-                  controller: classCode,
-                  decoration: InputDecoration(labelText: loc.t('班级', 'Class'))),
-              TextField(
-                  controller: phone,
-                  decoration:
-                      InputDecoration(labelText: loc.t('手机号', 'Phone'))),
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        InputDecoration deco(String label) => InputDecoration(
+              labelText: label,
+              filled: true,
+              fillColor: cs.surfaceContainerHighest.withValues(alpha: 77),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(28),
+                borderSide: BorderSide.none,
+              ),
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+            );
+        return StatefulBuilder(
+          builder: (context, setLocal) => AlertDialog(
+            title: Text(loc.t('新增学生', 'Add Student')),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                        controller: id,
+                        decoration:
+                            deco(loc.t('ID（如 s_003）', 'ID (e.g. s_003)'))),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: studentNo,
+                        decoration: deco(loc.t('学号', 'Student ID'))),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: fullName,
+                        decoration: deco(loc.t('姓名', 'Name'))),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ExpressiveSelector(
+                        label: loc.t('班级', 'Class'),
+                        value: selectedClass.isEmpty ? '' : selectedClass,
+                        leadingIcon: Icons.school_rounded,
+                        items: [
+                          '',
+                          ...classOptions
+                              .map((row) => (row['id'] ?? '').trim()),
+                        ],
+                        customLabelBuilder: (value) {
+                          if (value.isEmpty) {
+                            return loc.t('（不指定）', '(Not specified)');
+                          }
+                          return classNameById[value] ?? value;
+                        },
+                        onSelected: (value) {
+                          setLocal(() {
+                            selectedClass = value.trim();
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: phone,
+                        decoration: deco(loc.t('手机号', 'Phone'))),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(loc.t('取消', 'Cancel'))),
+              FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(loc.t('保存', 'Save'))),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(loc.t('取消', 'Cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(loc.t('保存', 'Save'))),
-        ],
-      ),
+        );
+      },
     );
 
     if (ok != true) return;
@@ -162,13 +244,12 @@ class _StudentsPageState extends State<StudentsPage> {
     final vId = id.text.trim();
     final vStudentNo = studentNo.text.trim();
     final vFullName = fullName.text.trim();
-    final vClassCode = classCode.text.trim();
+    final vClassCode = selectedClass.trim();
     final vPhone = phone.text.trim();
 
     id.dispose();
     studentNo.dispose();
     fullName.dispose();
-    classCode.dispose();
     phone.dispose();
 
     if (!await widget.session.features.hasFeature('students_insert')) {
@@ -297,46 +378,63 @@ class _StudentsPageState extends State<StudentsPage> {
                 ],
                 const SizedBox(height: 12),
                 Expanded(
-                  child: (items.isEmpty && !_loading)
-                      ? Center(child: Text(loc.t('暂无数据', 'No data')))
-                      : (items.isEmpty && _loading)
-                          ? const SizedBox.shrink()
-                          : ListView.separated(
-                              itemCount: items.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final s = items[index];
-                                return ListTile(
-                                  key: ValueKey(s.studentNo),
-                                  leading: const Icon(Icons.person),
-                                  title: Text(loc.t(
-                                      '${s.fullName}（${s.studentNo}）',
-                                      '${s.fullName} (${s.studentNo})')),
-                                  subtitle: Text('${s.classCode} · ${s.phone}'),
-                                  trailing: widget.session.canDeleteStudents
-                                      ? IconButton(
-                                          onPressed: _loading
-                                              ? null
-                                              : () => _deleteStudent(s),
-                                          icon:
-                                              const Icon(Icons.delete_outline),
-                                        )
-                                      : null,
-                                );
-                              },
-                            ),
+                  child: RefreshIndicator(
+                    onRefresh: () =>
+                        _refresh(silent: false, forceNetwork: true),
+                    child: (items.isEmpty && !_loading)
+                        ? Stack(
+                            children: [
+                              ListView(
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics()),
+                              Center(child: Text(loc.t('暂无数据', 'No data'))),
+                            ],
+                          )
+                        : (items.isEmpty && _loading)
+                            ? const SizedBox.shrink()
+                            : ListView.separated(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                itemCount: items.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final s = items[index];
+                                  return ListTile(
+                                    key: ValueKey(s.studentNo),
+                                    leading: Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                            color: Colors.grey.shade200),
+                                      ),
+                                      child: const Icon(Icons.person,
+                                          color: Colors.grey),
+                                    ),
+                                    title: Text(loc.t(
+                                        '${s.fullName}（${s.studentNo}）',
+                                        '${s.fullName} (${s.studentNo})')),
+                                    subtitle:
+                                        Text('${s.classCode} · ${s.phone}'),
+                                    trailing: widget.session.canDeleteStudents
+                                        ? IconButton(
+                                            onPressed: _loading
+                                                ? null
+                                                : () => _deleteStudent(s),
+                                            icon: const Icon(
+                                                Icons.delete_outline),
+                                          )
+                                        : null,
+                                  );
+                                },
+                              ),
+                  ),
                 ),
               ],
             ),
           ),
-          if (_loading)
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: LinearProgressIndicator(),
-            ),
         ],
       ),
     );
