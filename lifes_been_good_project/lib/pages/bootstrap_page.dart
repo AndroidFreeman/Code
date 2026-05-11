@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../main.dart';
 import '../services/bootstrapper.dart';
+import '../services/api_config.dart';
 
 class BootstrapPage extends StatefulWidget {
   final void Function(BootstrapResult result) onReady;
@@ -31,10 +32,11 @@ class _BootstrapPageState extends State<BootstrapPage> {
       _error = '';
     });
 
+    final bootFuture = Bootstrapper.run();
+
     late final BootstrapResult result;
     try {
-      result = await Bootstrapper.run(
-      );
+      result = await bootFuture;
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -54,6 +56,7 @@ class _BootstrapPageState extends State<BootstrapPage> {
       });
       return;
     }
+
     widget.onReady(result);
   }
 
@@ -76,7 +79,8 @@ class _BootstrapPageState extends State<BootstrapPage> {
               decoration: BoxDecoration(
                 color: cs.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: cs.outlineVariant.withValues(alpha: 96)),
+                border:
+                    Border.all(color: cs.outlineVariant.withValues(alpha: 96)),
               ),
               padding: const EdgeInsets.all(18),
               child: Column(
@@ -104,6 +108,17 @@ class _BootstrapPageState extends State<BootstrapPage> {
                   FilledButton(
                     onPressed: _running ? null : _run,
                     child: Text(loc.t('重试', 'Retry')),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _running
+                        ? null
+                        : () async {
+                            final bootRes = await Bootstrapper.runFallback();
+                            if (!mounted) return;
+                            widget.onReady(bootRes);
+                          },
+                    child: Text(loc.t('进入本地模式', 'Enter Local Mode')),
                   ),
                 ],
               ),
