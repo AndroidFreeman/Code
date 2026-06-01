@@ -64,10 +64,6 @@ int main() {
     root->right->right->right=new TreeNode(6);
     root->right->right->right->left=new TreeNode(7);
 
-
-    
-    
-
     // 测试三种遍历
     std::cout << "前序遍历: ";
     preOrder(root);
