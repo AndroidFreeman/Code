@@ -1,5 +1,5 @@
 /*
- * @datetime: 2026-06-02 01:03:22
+ * @datetime: 2026-06-02 01:06:28
  * @Github: https://github.com/AndroidFreeman
  * @Author: Android_Freeman
  * @relativePath: /Code/LearnDS_HBPU/0.6_myTree.cpp
@@ -14,39 +14,39 @@
  * @FilePath: /Code/LearnDS_HBPU/0.6_myTree.cpp
  */
 
-#include<bits/stdc++.h>
+#include <bits/stdc++.h>
 using namespace std;
 
-struct TreeNode{
+struct TreeNode {
     int val;
     TreeNode* left;
     TreeNode* right;
-    TreeNode(int x):val(x),left(nullptr),right(nullptr){}
+    TreeNode(int x) : val(x), left(nullptr), right(nullptr) {}
 };
 
-void preOrder(TreeNode* root){
-    if(root==nullptr) return;
-    cout<<root->val<<" ";
+void preOrder(TreeNode* root) {
+    if (root == nullptr) return;
+    cout << root->val << " ";
     preOrder(root->left);
     preOrder(root->right);
 }
 
-void inOrder(TreeNode* root){
-    if(root==nullptr) return;
+void inOrder(TreeNode* root) {
+    if (root == nullptr) return;
     inOrder(root->left);
-    cout<<root->val<<" ";
+    cout << root->val << " ";
     inOrder(root->right);
 }
 
-void postOrder(TreeNode* root){
-    if(root==nullptr) return;
+void postOrder(TreeNode* root) {
+    if (root == nullptr) return;
     postOrder(root->left);
     postOrder(root->right);
-    cout<<root->val<<" ";
+    cout << root->val << " ";
 }
 
-void freeTree(TreeNode* root){
-    if(root==nullptr) return;
+void freeTree(TreeNode* root) {
+    if (root == nullptr) return;
     freeTree(root->left);
     freeTree(root->right);
     delete root;
@@ -61,15 +61,15 @@ int main() {
     //    4
 
     TreeNode* root = new TreeNode(1);
-    // root->left = new TreeNode(2);
-    // root->right = new TreeNode(3);
-    // root->left->left = new TreeNode(4);
-    root->right=new TreeNode(2);
-    root->right->left=new TreeNode(3);
-    root->right->right=new TreeNode(4);
-    root->right->right->left=new TreeNode(5);
-    root->right->right->right=new TreeNode(6);
-    root->right->right->right->left=new TreeNode(7);
+    root->left = new TreeNode(2);
+    root->right = new TreeNode(3);
+    root->left->left = new TreeNode(4);
+    // root->right = new TreeNode(2);
+    // root->right->left = new TreeNode(3);
+    // root->right->right = new TreeNode(4);
+    // root->right->right->left = new TreeNode(5);
+    // root->right->right->right = new TreeNode(6);
+    // root->right->right->right->left = new TreeNode(7);
 
     // 测试三种遍历
     std::cout << "前序遍历: ";
